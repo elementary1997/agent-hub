@@ -13,6 +13,8 @@ import {
   onAgentUpserted,
   openNative,
   quitAgent,
+  startManagedAgent,
+  stopManagedAgent,
 } from "@/lib/api";
 import type { Agent } from "@/types/agent";
 
@@ -109,13 +111,20 @@ export default function App() {
   const handleToggleRun = (id: string) => {
     const agent = agentsMap[id];
     if (!agent) return;
+    if (agent.manifest.lifecycle !== "managed") return;
     const isAlive =
       agent.runtime.status === "running" || agent.runtime.status === "busy";
     if (isAlive) {
-      quitAgent(id).catch((e) => console.error("[hub] quit failed:", e));
+      // Prefer the supervisor stop path so we kill the child process even
+      // when the agent is wedged and ignores POST /quit.
+      stopManagedAgent(id).catch((e) => {
+        console.warn("[hub] supervisor stop failed, falling back to /quit:", e);
+        quitAgent(id).catch((qe) => console.error("[hub] quit failed:", qe));
+      });
     } else {
-      // Spawning managed agents lands in v0.3 (process supervisor).
-      console.warn("[hub] starting managed agents arrives in v0.3");
+      startManagedAgent(id).catch((e) =>
+        console.error("[hub] start failed:", e),
+      );
     }
   };
 

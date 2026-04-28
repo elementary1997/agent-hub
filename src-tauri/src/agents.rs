@@ -153,6 +153,14 @@ impl Registry {
             .map(|r| r.manifest.endpoint.clone())
     }
 
+    pub async fn manifest_of(&self, id: &str) -> Option<AgentManifest> {
+        self.agents
+            .lock()
+            .await
+            .get(id)
+            .map(|r| r.manifest.clone())
+    }
+
     /// Shared reqwest client for chat / SSE / one-off API calls. Reusing the
     /// same connection pool everywhere avoids hammering 127.0.0.1 with
     /// fresh TCP handshakes per request.

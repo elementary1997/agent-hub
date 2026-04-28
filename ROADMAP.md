@@ -53,18 +53,32 @@ Goal: a real chat with an AI agent inside the hub.
 End state (after v0.2.1): open hub → click AI agent → start a chat →
 tokens stream in, history survives restarts.
 
-## v0.3 — Process Manager + Settings (target: 1 week)
+## v0.3 — Process Manager + Settings
 
 Goal: hybrid lifecycle works; agents can be configured from the hub.
 
-- [ ] Spawn `lifecycle: "managed"` agents as Tauri sidecar / `tokio::process`
-- [ ] Crash recovery with exponential backoff (max 3 attempts in 60 s)
-- [ ] Stdout/stderr piped into per-agent log buffer (visible in detail view)
-- [ ] JSON-Schema-driven settings form generator
-      (using e.g. `@rjsf/core` or hand-rolled with shadcn primitives)
-- [ ] Per-agent toggle "auto-start with hub"
+### v0.3.0 — Supervisor (shipped)
 
-End state: all four lifecycle/configure paths work end-to-end.
+- [x] Spawn `lifecycle: "managed"` agents via `tokio::process::Command`
+- [x] Crash recovery with budget (max 3 attempts in 60 s, then give up)
+- [x] Stdout/stderr piped into a per-agent ring buffer (1000 lines) +
+      live `agent-log` Tauri stream for tailing
+- [x] Tauri commands: `agent_start`, `agent_stop_managed`, `agent_logs`,
+      `agent_is_managed_running`
+- [x] Card buttons wired: Stop sends supervisor.stop() (POST /quit then
+      kill on grace timeout); Start spawns the manifest's executable
+
+### v0.3.1 — Settings + auto-start (next)
+
+- [ ] JSON-Schema-driven settings form generator
+      (`@rjsf/core` or hand-rolled with shadcn primitives) backed by
+      `GET /config` / `PUT /config`
+- [ ] Per-agent toggle "auto-start with hub" — honours
+      `auto_start_on_hub_launch` from the manifest
+- [ ] Log viewer panel inside the agent detail page (consumes the
+      existing `agent-log` Tauri stream)
+
+End state (after v0.3.1): all four lifecycle/configure paths work end-to-end.
 
 ## v0.4 — UX polish (target: 1 week)
 

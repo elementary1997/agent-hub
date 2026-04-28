@@ -11,10 +11,12 @@
 
 mod agents;
 mod chat;
+mod supervisor;
 
 use tauri::Manager;
 
 use crate::agents::Registry;
+use crate::supervisor::Supervisor;
 
 #[tauri::command]
 fn ping() -> &'static str {
@@ -32,6 +34,10 @@ pub fn run() {
         .setup(|app| {
             let registry = Registry::new();
             app.manage(registry.clone());
+
+            let supervisor = Supervisor::new(app.handle().clone(), registry.clone());
+            app.manage(supervisor);
+
             agents::start(app.handle().clone(), registry);
 
             if let Some(w) = app.get_webview_window("main") {
@@ -51,6 +57,10 @@ pub fn run() {
             chat::chat_delete_conversation,
             chat::chat_patch_conversation,
             chat::chat_send_message,
+            supervisor::agent_start,
+            supervisor::agent_stop_managed,
+            supervisor::agent_logs,
+            supervisor::agent_is_managed_running,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agent Hub");

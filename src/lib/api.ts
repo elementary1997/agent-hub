@@ -14,6 +14,37 @@ export function quitAgent(id: string): Promise<void> {
   return invoke("agent_quit", { id });
 }
 
+export function startManagedAgent(id: string): Promise<void> {
+  return invoke("agent_start", { id });
+}
+
+export function stopManagedAgent(id: string): Promise<void> {
+  return invoke("agent_stop_managed", { id });
+}
+
+export function isManagedRunning(id: string): Promise<boolean> {
+  return invoke<boolean>("agent_is_managed_running", { id });
+}
+
+export interface AgentLogLine {
+  at: number;
+  stream: "stdout" | "stderr" | "supervisor";
+  text: string;
+}
+
+export function fetchAgentLogs(id: string): Promise<AgentLogLine[]> {
+  return invoke<AgentLogLine[]>("agent_logs", { id });
+}
+
+export interface AgentLogEvent {
+  agentId: string;
+  line: AgentLogLine;
+}
+
+export function onAgentLog(cb: (e: AgentLogEvent) => void): Promise<UnlistenFn> {
+  return listen<AgentLogEvent>("agent-log", (e) => cb(e.payload));
+}
+
 export function agentsDir(): Promise<string> {
   return invoke<string>("agents_dir");
 }
