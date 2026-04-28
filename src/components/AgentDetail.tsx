@@ -16,13 +16,16 @@ import { useAgentStore } from "@/store/agents";
 import {
   fetchAgentLogs,
   getAgentConfig,
+  getAutoStart,
   onAgentLog,
   openNative,
   putAgentConfig,
+  setAutoStart,
   startManagedAgent,
   stopManagedAgent,
   type AgentConfigResponse,
   type AgentLogLine,
+  type AutoStartView,
 } from "@/lib/api";
 import { SchemaForm } from "@/components/SchemaForm";
 
@@ -50,6 +53,7 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
   const [configError, setConfigError] = useState<string | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
   const [actionPending, setActionPending] = useState(false);
+  const [autoStart, setAutoStartState] = useState<AutoStartView | null>(null);
 
   const accent = agent?.manifest.accent ?? "#7c5cff";
   const isAi = agent?.manifest.kind === "ai";
@@ -78,10 +82,20 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
     }
   }, [agent, agentId]);
 
+  const refreshAutoStart = useCallback(async () => {
+    if (!agent) return;
+    try {
+      setAutoStartState(await getAutoStart(agentId));
+    } catch (e) {
+      console.error("[detail] auto-start fetch failed:", e);
+    }
+  }, [agent, agentId]);
+
   useEffect(() => {
     void refreshLogs();
     void refreshConfig();
-  }, [agentId, refreshLogs, refreshConfig]);
+    void refreshAutoStart();
+  }, [agentId, refreshLogs, refreshConfig, refreshAutoStart]);
 
   // Live tail for log lines emitted by the supervisor.
   useEffect(() => {
@@ -143,6 +157,18 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
       }
     },
     [agentId],
+  );
+
+  const handleAutoStart = useCallback(
+    async (next: boolean) => {
+      try {
+        await setAutoStart(agentId, next);
+        await refreshAutoStart();
+      } catch (e) {
+        console.error("[detail] set auto-start failed:", e);
+      }
+    },
+    [agentId, refreshAutoStart],
   );
 
   const initialConfig = useMemo(
@@ -258,26 +284,38 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
         )}
         {tab === "logs" && <LogsPane logs={logs} />}
         {tab === "config" && (
-          <div className="max-w-3xl mx-auto p-6">
-            {configError ? (
-              <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-300">
-                <div className="font-medium mb-1">Failed to load config</div>
-                <div className="text-xs break-words opacity-80">{configError}</div>
-                <p className="text-xs text-muted mt-2">
-                  Agents can opt out of `GET /config` if they have nothing to expose —
-                  in that case there's nothing to do here.
-                </p>
-              </div>
-            ) : config ? (
-              <SchemaForm
-                schema={config.schema}
-                initial={initialConfig}
-                onSubmit={handleSaveConfig}
-                busy={savingConfig}
+          <div className="max-w-3xl mx-auto p-6 space-y-6">
+            {isManaged && autoStart && (
+              <AutoStartToggle
+                value={autoStart}
+                onChange={handleAutoStart}
               />
-            ) : (
-              <div className="text-sm text-muted">Loading…</div>
             )}
+
+            <div>
+              <div className="text-xs uppercase tracking-wider text-muted mb-2">
+                Agent config
+              </div>
+              {configError ? (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-300">
+                  <div className="font-medium mb-1">Failed to load config</div>
+                  <div className="text-xs break-words opacity-80">{configError}</div>
+                  <p className="text-xs text-muted mt-2">
+                    Agents can opt out of <code>GET /config</code> if they have nothing to
+                    expose — in that case there's nothing to do here.
+                  </p>
+                </div>
+              ) : config ? (
+                <SchemaForm
+                  schema={config.schema}
+                  initial={initialConfig}
+                  onSubmit={handleSaveConfig}
+                  busy={savingConfig}
+                />
+              ) : (
+                <div className="text-sm text-muted">Loading…</div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -344,6 +382,50 @@ function TabButton({
     >
       {children}
     </button>
+  );
+}
+
+function AutoStartToggle({
+  value,
+  onChange,
+}: {
+  value: AutoStartView;
+  onChange: (next: boolean) => void;
+}) {
+  const explanation = value.user_override == null
+    ? `Default from manifest: ${value.manifest_default ? "on" : "off"}.`
+    : `Override active. Manifest default: ${value.manifest_default ? "on" : "off"}.`;
+
+  return (
+    <div className="rounded-xl border border-border-subtle bg-bg-card/40 p-4 flex items-start gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="font-medium text-sm">Auto-start with hub</div>
+        <p className="text-xs text-muted mt-1">
+          When the hub launches, automatically spawn this agent's executable
+          and supervise it. Only available for managed agents.
+        </p>
+        <p className="text-[11px] text-muted/70 mt-1">{explanation}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value.enabled}
+        onClick={() => onChange(!value.enabled)}
+        className={cn(
+          "relative inline-flex w-11 h-6 rounded-full border transition-colors",
+          value.enabled
+            ? "bg-emerald-500/30 border-emerald-500/60"
+            : "bg-bg-elev border-border-default",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform bg-slate-100",
+            value.enabled ? "translate-x-5" : "translate-x-0",
+          )}
+        />
+      </button>
+    </div>
   );
 }
 

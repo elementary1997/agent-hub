@@ -82,14 +82,18 @@ Goal: hybrid lifecycle works; agents can be configured from the hub.
 - [x] Activity feed reads the per-agent rolling event buffer populated by
       the v0.1.2 WebSocket client.
 
-### v0.3.2 — Auto-start (next)
+### v0.3.2 — Auto-start + tray (shipped)
 
-- [ ] Per-agent toggle "auto-start with hub" — honours
-      `auto_start_on_hub_launch` from the manifest, persists user override
-      via `tauri-plugin-store`
-- [ ] Tray icon with quick actions (status, new chat, quit)
+- [x] Per-agent toggle "Auto-start with hub" — honours
+      `auto_start_on_hub_launch` from the manifest, with a user override
+      persisted via `tauri-plugin-store`. Effective value computed as
+      `user_override ?? manifest_default ?? false`.
+- [x] `prefs::maybe_autostart` runs on every manifest upsert — initial
+      scan and live edits both honour the toggle without a hub restart.
+- [x] System tray icon with Show / Quit menu; left-click brings the main
+      window back from the dock.
 
-End state (after v0.3.2): all four lifecycle/configure paths work end-to-end.
+End state: all four lifecycle/configure paths work end-to-end.
 
 ## v0.4 — UX polish (target: 1 week)
 

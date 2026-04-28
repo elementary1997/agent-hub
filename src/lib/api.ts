@@ -72,6 +72,20 @@ export function putAgentConfig(
   return invoke<AgentConfigResponse>("agent_put_config", { id, config });
 }
 
+export interface AutoStartView {
+  enabled: boolean;
+  user_override: boolean | null;
+  manifest_default: boolean;
+}
+
+export function getAutoStart(id: string): Promise<AutoStartView> {
+  return invoke<AutoStartView>("agent_get_auto_start", { id });
+}
+
+export function setAutoStart(id: string, enabled: boolean): Promise<void> {
+  return invoke("agent_set_auto_start", { id, enabled });
+}
+
 export interface AgentLogEvent {
   agentId: string;
   line: AgentLogLine;

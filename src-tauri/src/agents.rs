@@ -57,6 +57,8 @@ pub struct AgentManifest {
     #[serde(default)]
     pub accent: Option<String>,
     #[serde(default)]
+    pub auto_start_on_hub_launch: Option<bool>,
+    #[serde(default)]
     pub ai: Option<serde_json::Value>,
     #[serde(default)]
     pub protocol: Option<String>,
@@ -331,6 +333,8 @@ async fn upsert_from_file(
     if need_new_poller {
         spawn_agent_tasks(app.clone(), registry.clone(), id.clone(), endpoint).await;
     }
+
+    crate::prefs::maybe_autostart(app, &manifest);
 
     Ok(())
 }

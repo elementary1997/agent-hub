@@ -11,8 +11,11 @@
 
 mod agents;
 mod chat;
+mod prefs;
 mod supervisor;
 
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 
 use crate::agents::Registry;
@@ -21,6 +24,14 @@ use crate::supervisor::Supervisor;
 #[tauri::command]
 fn ping() -> &'static str {
     "pong"
+}
+
+fn focus_main(app: &tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
 }
 
 pub fn run() {
@@ -39,6 +50,39 @@ pub fn run() {
             app.manage(supervisor);
 
             agents::start(app.handle().clone(), registry);
+
+            // System tray with a tiny menu — left-click brings the window
+            // back, right-click shows Show / Quit.
+            let show = MenuItem::with_id(app, "tray_show", "Show Agent Hub", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &quit])?;
+
+            let icon = app
+                .default_window_icon()
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("missing default window icon"))?;
+
+            let _tray = TrayIconBuilder::with_id("main")
+                .icon(icon)
+                .tooltip("Agent Hub")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "tray_show" => focus_main(app),
+                    "tray_quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        focus_main(tray.app_handle());
+                    }
+                })
+                .build(app)?;
 
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_focus();
@@ -63,6 +107,8 @@ pub fn run() {
             supervisor::agent_stop_managed,
             supervisor::agent_logs,
             supervisor::agent_is_managed_running,
+            prefs::agent_get_auto_start,
+            prefs::agent_set_auto_start,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agent Hub");
