@@ -95,17 +95,32 @@ Goal: hybrid lifecycle works; agents can be configured from the hub.
 
 End state: all four lifecycle/configure paths work end-to-end.
 
-## v0.4 — UX polish (target: 1 week)
+## v0.4 — UX polish
 
 Goal: feels modern.
 
-- [ ] Command palette (`⌘K` / `Ctrl+K`) with fuzzy search across:
-      agents, conversations, actions ("start easystt", "open settings of …")
-- [ ] Per-agent accent colours propagate to card / chat / palette result rows
-- [ ] framer-motion for card hover, mount, list reorder, message bubble appear
-- [ ] Sidebar filters: All / Running / By kind / By tag
-- [ ] Theme switcher (dark / light), persistent in store
+### v0.4.0 — Palette, tags, version visibility (shipped)
+
+- [x] Command palette (`⌘K` / `Ctrl+K`) with prefix/word/substring/subsequence
+      scoring. Actions: chat with AI agents, open details, open native UI,
+      start / stop managed agents. Per-agent accent on result rows.
+- [x] Per-agent accent colours propagate to cards, chat header, palette,
+      detail page header.
+- [x] framer-motion for card hover, mount, list reorder, message bubble appear,
+      palette in/out, activity feed entries.
+- [x] Sidebar filters: All / Running / By kind / By tag (auto-populated from
+      manifest tags, sorted by count).
+- [x] Build version + short git SHA visible in the Topbar and Sidebar so
+      it's obvious which build is running. Wired via Vite `define` so the
+      string is baked into the bundle at build time.
+- [x] Versioning unified: package.json, Cargo.toml, tauri.conf.json all on
+      0.4.0. The `.deb` / `.exe` filenames now bump on every release.
+
+### v0.4.1 — Theme + global hotkeys (next)
+
+- [ ] Theme switcher (dark / light), persistent in `tauri-plugin-store`
 - [ ] Global hotkeys: "open hub", "new chat with last-used AI"
+      via `tauri-plugin-global-shortcut`
 
 End state: feels fast and pretty without breaking.
 

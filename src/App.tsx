@@ -3,6 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import { AgentCard } from "@/components/AgentCard";
 import { AgentDetail } from "@/components/AgentDetail";
 import { ChatView } from "@/components/ChatView";
+import { CommandPalette } from "@/components/CommandPalette";
 import { Sidebar, type SidebarFilter } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { useAgentStore } from "@/store/agents";
@@ -23,6 +24,10 @@ function applyFilter(agents: Agent[], f: SidebarFilter): Agent[] {
   if (f === "all") return agents;
   if (f === "running") {
     return agents.filter((a) => a.runtime.status === "running" || a.runtime.status === "busy");
+  }
+  if (f.startsWith("tag:")) {
+    const tag = f.slice(4);
+    return agents.filter((a) => (a.manifest.tags ?? []).includes(tag));
   }
   return agents.filter((a) => a.manifest.kind === f);
 }
@@ -49,6 +54,28 @@ export default function App() {
   const [filter, setFilter] = useState<SidebarFilter>("all");
   const [chatAgent, setChatAgent] = useState<string | null>(null);
   const [detailAgent, setDetailAgent] = useState<string | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // ⌘K / Ctrl+K opens the command palette from anywhere.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const handleOpenChat = (id: string) => {
+    setDetailAgent(null);
+    setChatAgent(id);
+  };
+  const handleOpenDetail = (id: string) => {
+    setChatAgent(null);
+    setDetailAgent(id);
+  };
 
   useEffect(() => {
     let unlistenUp: (() => void) | null = null;
@@ -85,19 +112,28 @@ export default function App() {
 
   const agents = useMemo(() => sortAgents(Object.values(agentsMap)), [agentsMap]);
 
-  const counts = useMemo(
-    () =>
-      ({
-        all: agents.length,
-        running: agents.filter(
-          (a) => a.runtime.status === "running" || a.runtime.status === "busy",
-        ).length,
-        ai: agents.filter((a) => a.manifest.kind === "ai").length,
-        utility: agents.filter((a) => a.manifest.kind === "utility").length,
-        service: agents.filter((a) => a.manifest.kind === "service").length,
-      }) as Record<SidebarFilter, number>,
+  const counts = useMemo<Record<string, number>>(
+    () => ({
+      all: agents.length,
+      running: agents.filter(
+        (a) => a.runtime.status === "running" || a.runtime.status === "busy",
+      ).length,
+      ai: agents.filter((a) => a.manifest.kind === "ai").length,
+      utility: agents.filter((a) => a.manifest.kind === "utility").length,
+      service: agents.filter((a) => a.manifest.kind === "service").length,
+    }),
     [agents],
   );
+
+  const tagCounts = useMemo<Record<string, number>>(() => {
+    const out: Record<string, number> = {};
+    for (const agent of agents) {
+      for (const tag of agent.manifest.tags ?? []) {
+        out[tag] = (out[tag] ?? 0) + 1;
+      }
+    }
+    return out;
+  }, [agents]);
 
   const visible = useMemo(() => applyFilter(agents, filter), [agents, filter]);
 
@@ -130,10 +166,20 @@ export default function App() {
     }
   };
 
+  const palette = (
+    <CommandPalette
+      open={paletteOpen}
+      onClose={() => setPaletteOpen(false)}
+      onOpenChat={handleOpenChat}
+      onOpenDetail={handleOpenDetail}
+    />
+  );
+
   if (chatAgent) {
     return (
       <div className="h-screen w-screen overflow-hidden">
         <ChatView agentId={chatAgent} onBack={() => setChatAgent(null)} />
+        {palette}
       </div>
     );
   }
@@ -144,18 +190,23 @@ export default function App() {
         <AgentDetail
           agentId={detailAgent}
           onBack={() => setDetailAgent(null)}
-          onOpenChat={(id) => {
-            setDetailAgent(null);
-            setChatAgent(id);
-          }}
+          onOpenChat={handleOpenChat}
         />
+        {palette}
       </div>
     );
   }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
-      <Sidebar filter={filter} onFilterChange={setFilter} counts={counts} />
+      {palette}
+      <Sidebar
+        filter={filter}
+        onFilterChange={setFilter}
+        counts={counts}
+        tagCounts={tagCounts}
+        onOpenPalette={() => setPaletteOpen(true)}
+      />
 
       <main className="flex-1 flex flex-col min-w-0">
         <Topbar
@@ -166,13 +217,16 @@ export default function App() {
                 ? "Running"
                 : filter === "ai"
                   ? "AI"
-                  : "Utilities"
+                  : filter.startsWith("tag:")
+                    ? `#${filter.slice(4)}`
+                    : "Utilities"
           }
           subtitle={
             !loaded && !error
               ? "Loading…"
               : `${visible.length} of ${agents.length} agent${agents.length === 1 ? "" : "s"}`
           }
+          onOpenPalette={() => setPaletteOpen(true)}
         />
 
         <div className="flex-1 overflow-auto p-6">
