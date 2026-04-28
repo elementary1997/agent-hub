@@ -1,20 +1,21 @@
-import { Activity, Bot, Cog, Hash, Layers, Search, Wrench } from "lucide-react";
+import { Activity, Bot, Hash, Layers, Search, Store, Wrench } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 import type { AgentKind } from "@/types/agent";
 
 export type SidebarFilter = "all" | "running" | AgentKind | `tag:${string}`;
 
 interface FilterMeta {
-  id: SidebarFilter;
-  label: string;
+  id: Exclude<SidebarFilter, `tag:${string}`>;
+  labelKey: string;
   icon: typeof Layers;
 }
 
 const BASE_FILTERS: FilterMeta[] = [
-  { id: "all", label: "All agents", icon: Layers },
-  { id: "running", label: "Running", icon: Activity },
-  { id: "ai", label: "AI", icon: Bot },
-  { id: "utility", label: "Utilities", icon: Wrench },
+  { id: "all", labelKey: "sidebar.filter.all", icon: Layers },
+  { id: "running", labelKey: "sidebar.filter.running", icon: Activity },
+  { id: "ai", labelKey: "sidebar.filter.ai", icon: Bot },
+  { id: "utility", labelKey: "sidebar.filter.utility", icon: Wrench },
 ];
 
 export interface SidebarProps {
@@ -23,7 +24,7 @@ export interface SidebarProps {
   counts: Record<string, number>;
   tagCounts?: Record<string, number>;
   onOpenPalette?: () => void;
-  onOpenSettings?: () => void;
+  onOpenMarketplace?: () => void;
 }
 
 export function Sidebar({
@@ -32,8 +33,9 @@ export function Sidebar({
   counts,
   tagCounts,
   onOpenPalette,
-  onOpenSettings,
+  onOpenMarketplace,
 }: SidebarProps) {
+  const { t } = useI18n();
   const tags = tagCounts
     ? Object.entries(tagCounts)
         .filter(([, n]) => n > 0)
@@ -50,8 +52,10 @@ export function Sidebar({
           A
         </div>
         <div className="leading-tight">
-          <div className="font-semibold">Agent Hub</div>
-          <div className="text-[11px] text-muted">v{__APP_VERSION__} · local</div>
+          <div className="font-semibold">{t("sidebar.brand")}</div>
+          <div className="text-[11px] text-muted">
+            v{__APP_VERSION__} · {t("sidebar.subtitle")}
+          </div>
         </div>
       </div>
 
@@ -64,10 +68,10 @@ export function Sidebar({
             "bg-bg-card/60 border border-border-subtle text-muted text-xs",
             "hover:border-border-default hover:text-slate-200 transition-colors",
           )}
-          title="Command palette"
+          title={t("topbar.paletteHint")}
         >
           <Search size={13} />
-          <span className="flex-1 text-left">Search…</span>
+          <span className="flex-1 text-left">{t("sidebar.search")}</span>
           <kbd className="text-[10px] px-1.5 py-0.5 rounded border border-border-default font-mono text-muted">
             ⌘K
           </kbd>
@@ -75,7 +79,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-auto px-2 py-1">
-        {BASE_FILTERS.map(({ id, label, icon: Icon }) => {
+        {BASE_FILTERS.map(({ id, labelKey, icon: Icon }) => {
           const active = filter === id;
           return (
             <button
@@ -91,7 +95,7 @@ export function Sidebar({
               )}
             >
               <Icon size={15} strokeWidth={1.75} />
-              <span className="flex-1 text-left">{label}</span>
+              <span className="flex-1 text-left">{t(labelKey)}</span>
               <span className="text-[11px] tabular-nums text-muted">
                 {counts[id] ?? 0}
               </span>
@@ -102,7 +106,7 @@ export function Sidebar({
         {tags.length > 0 && (
           <>
             <div className="mt-3 mb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted">
-              Tags
+              {t("sidebar.tags")}
             </div>
             {tags.map(([tag, count]) => {
               const id: SidebarFilter = `tag:${tag}`;
@@ -135,21 +139,21 @@ export function Sidebar({
 
       <div className="p-3 border-t border-border-subtle space-y-2">
         <div className="flex items-center justify-between px-2.5 text-[11px] text-muted">
-          <span>Show hub</span>
+          <span>{t("sidebar.showHub")}</span>
           <kbd className="px-1.5 py-0.5 rounded border border-border-default font-mono text-[10px]">
             Ctrl+Shift+H
           </kbd>
         </div>
         <button
           type="button"
-          onClick={onOpenSettings}
+          onClick={onOpenMarketplace}
           className={cn(
             "w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm",
             "text-muted hover:text-slate-200 hover:bg-bg-card/40 transition-colors",
           )}
         >
-          <Cog size={15} />
-          Settings
+          <Store size={15} />
+          {t("sidebar.marketplace")}
         </button>
       </div>
     </aside>

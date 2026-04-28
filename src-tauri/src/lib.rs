@@ -12,6 +12,9 @@
 mod agents;
 mod chat;
 mod chatdb;
+mod cloudru_agent;
+mod easystt_install;
+mod npm_util;
 mod openrouter_agent;
 mod prefs;
 mod supervisor;
@@ -156,6 +159,8 @@ pub fn run() {
             prefs::agent_get_auto_start,
             prefs::agent_set_auto_start,
             openrouter_agent::install_openrouter_agent,
+            cloudru_agent::install_cloudru_agent,
+            easystt_install::install_easystt_latest,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agent Hub");

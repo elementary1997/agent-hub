@@ -9,6 +9,7 @@ import {
   Github,
   Hash,
   Keyboard,
+  Languages,
   Moon,
   Power,
   RefreshCw,
@@ -16,10 +17,13 @@ import {
   Sun,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 import { useAgentStore } from "@/store/agents";
 import {
   getAutoStart,
   getChatDbStats,
+  installCloudRuAgent,
+  installEasysttLatest,
   installOpenRouterAgent,
   isManagedRunning,
   setAutoStart,
@@ -28,11 +32,15 @@ import {
   type ChatDbStats,
 } from "@/lib/api";
 
+export type SettingsTab = "general" | "marketplace" | "system" | "about";
+
 interface SettingsViewProps {
   onBack: () => void;
   theme: "dark" | "light";
   onThemeChange: (next: "dark" | "light") => void;
   onOpenAgentSettings?: (id: string) => void;
+  /** Sidebar Marketplace opens with this tab (default: general). */
+  initialTab?: SettingsTab;
 }
 
 interface AutoStartRow {
@@ -43,12 +51,16 @@ interface AutoStartRow {
   managed: boolean;
 }
 
-const HOTKEYS: { combo: string; what: string; note?: string }[] = [
-  { combo: "Ctrl+Shift+H", what: "Show / focus hub", note: "global" },
-  { combo: "⌘K / Ctrl+K", what: "Open command palette" },
-  { combo: "↑ ↓", what: "Navigate palette / lists" },
-  { combo: "Enter", what: "Run selected action" },
-  { combo: "Esc", what: "Close palette / dialog" },
+const HOTKEY_ROWS: {
+  combo: string;
+  whatKey: string;
+  noteKey?: string;
+}[] = [
+  { combo: "Ctrl+Shift+H", whatKey: "hk.1.what", noteKey: "hk.1.note" },
+  { combo: "⌘K / Ctrl+K", whatKey: "hk.2.what" },
+  { combo: "↑ ↓", whatKey: "hk.3.what" },
+  { combo: "Enter", whatKey: "hk.4.what" },
+  { combo: "Esc", whatKey: "hk.5.what" },
 ];
 
 export function SettingsView({
@@ -56,19 +68,32 @@ export function SettingsView({
   theme,
   onThemeChange,
   onOpenAgentSettings,
+  initialTab = "general",
 }: SettingsViewProps) {
+  const { t, locale, setLocale } = useI18n();
   const agentsMap = useAgentStore((s) => s.agents);
   const manifestDir = useAgentStore((s) => s.manifestDir);
   const openRouterAgent = agentsMap["openrouter-agent"];
+  const cloudRuAgent = agentsMap["cloudru-agent"];
+
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
 
   const [stats, setStats] = useState<ChatDbStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState<string | null>(null);
   const [autoStartRows, setAutoStartRows] = useState<AutoStartRow[]>([]);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
+
   const [installingOpenRouter, setInstallingOpenRouter] = useState(false);
-  const [openRouterInstallMsg, setOpenRouterInstallMsg] = useState<string | null>(null);
+  const [orMsg, setOrMsg] = useState<string | null>(null);
   const [openRouterRunning, setOpenRouterRunning] = useState(false);
+
+  const [installingCloudRu, setInstallingCloudRu] = useState(false);
+  const [crMsg, setCrMsg] = useState<string | null>(null);
+  const [cloudRuRunning, setCloudRuRunning] = useState(false);
+
+  const [installingEasystt, setInstallingEasystt] = useState(false);
+  const [easysttMsg, setEasysttMsg] = useState<string | null>(null);
 
   const agents = useMemo(() => Object.values(agentsMap), [agentsMap]);
 
@@ -90,6 +115,16 @@ export function SettingsView({
       .then((v) => setOpenRouterRunning(v))
       .catch(() => setOpenRouterRunning(false));
   }, [openRouterAgent]);
+
+  useEffect(() => {
+    if (!cloudRuAgent) {
+      setCloudRuRunning(false);
+      return;
+    }
+    isManagedRunning("cloudru-agent")
+      .then((v) => setCloudRuRunning(v))
+      .catch(() => setCloudRuRunning(false));
+  }, [cloudRuAgent]);
 
   useEffect(() => {
     refreshStats();
@@ -142,16 +177,27 @@ export function SettingsView({
 
   const onInstallOpenRouter = async () => {
     setInstallingOpenRouter(true);
-    setOpenRouterInstallMsg(null);
+    setOrMsg(null);
     try {
       const out = await installOpenRouterAgent();
-      setOpenRouterInstallMsg(
-        `Installed to ${out.projectDir}. Manifest: ${out.manifestPath}`,
-      );
+      setOrMsg(`Installed to ${out.projectDir}. Manifest: ${out.manifestPath}`);
     } catch (e) {
-      setOpenRouterInstallMsg(`Install failed: ${String(e)}`);
+      setOrMsg(`Install failed: ${String(e)}`);
     } finally {
       setInstallingOpenRouter(false);
+    }
+  };
+
+  const onInstallCloudRu = async () => {
+    setInstallingCloudRu(true);
+    setCrMsg(null);
+    try {
+      const out = await installCloudRuAgent();
+      setCrMsg(`Installed to ${out.projectDir}. Manifest: ${out.manifestPath}`);
+    } catch (e) {
+      setCrMsg(`Install failed: ${String(e)}`);
+    } finally {
+      setInstallingCloudRu(false);
     }
   };
 
@@ -159,313 +205,459 @@ export function SettingsView({
     try {
       await startManagedAgent("openrouter-agent");
       setOpenRouterRunning(true);
-      setOpenRouterInstallMsg("OpenRouter Agent started.");
+      setOrMsg("OpenRouter Agent started.");
     } catch (e) {
-      setOpenRouterInstallMsg(`Start failed: ${String(e)}`);
+      setOrMsg(`Start failed: ${String(e)}`);
     }
   };
 
-  const marketplace = useMemo(
-    () => [
-      {
-        id: "easystt",
-        name: "easySTT",
-        kind: "Utility",
-        description: "Push-to-talk speech-to-text with text injection.",
-        accent: "#4f8cff",
-        installed: !!agentsMap["easystt"],
-        installLabel: "Open download page",
-        installAction: () => {
-          window.open("https://github.com/elementary1997/easySTT/releases", "_blank");
-        },
-      },
-      {
-        id: "openrouter-agent",
-        name: "OpenRouter Agent",
-        kind: "AI",
-        description: "Chat with Claude / GPT / Gemini through OpenRouter.",
-        accent: "#5b8def",
-        installed: !!openRouterAgent,
-        installLabel: openRouterAgent ? "Repair / Reinstall" : "Install",
-        installAction: onInstallOpenRouter,
-      },
-    ],
-    [agentsMap, openRouterAgent],
-  );
+  const onStartCloudRu = async () => {
+    try {
+      await startManagedAgent("cloudru-agent");
+      setCloudRuRunning(true);
+      setCrMsg("Cloud.ru Agent started.");
+    } catch (e) {
+      setCrMsg(`Start failed: ${String(e)}`);
+    }
+  };
+
+  const onInstallEasystt = async () => {
+    setInstallingEasystt(true);
+    setEasysttMsg(null);
+    try {
+      const out = await installEasysttLatest();
+      setEasysttMsg(`${out.assetName} → ${out.downloadedPath}`);
+    } catch (e) {
+      setEasysttMsg(String(e));
+    } finally {
+      setInstallingEasystt(false);
+    }
+  };
+
+  const tabs: { id: SettingsTab; label: string }[] = [
+    { id: "general", label: t("tab.general") },
+    { id: "marketplace", label: t("tab.marketplace") },
+    { id: "system", label: t("tab.system") },
+    { id: "about", label: t("tab.about") },
+  ];
 
   return (
-    <div className="h-full w-full overflow-auto bg-bg-base text-slate-200">
-      <header className="sticky top-0 z-10 backdrop-blur bg-bg-base/80 border-b border-border-subtle">
+    <div className="h-full w-full flex flex-col bg-bg-base text-slate-200">
+      <header className="shrink-0 z-10 backdrop-blur bg-bg-base/80 border-b border-border-subtle">
         <div className="max-w-3xl mx-auto px-6 py-4 flex items-center gap-3">
           <button
             type="button"
             onClick={onBack}
             className="p-2 rounded-lg hover:bg-bg-card/60 text-muted hover:text-slate-200 transition-colors"
-            title="Back"
+            title={t("settings.back")}
           >
             <ArrowLeft size={16} />
           </button>
           <div>
-            <div className="text-lg font-semibold">Settings</div>
-            <div className="text-xs text-muted">Hub-wide configuration</div>
+            <div className="text-lg font-semibold">{t("settings.title")}</div>
+            <div className="text-xs text-muted">{t("settings.subtitle")}</div>
           </div>
+        </div>
+        <div className="max-w-3xl mx-auto px-6 flex gap-1 border-t border-border-subtle/40 overflow-x-auto">
+          {tabs.map((x) => (
+            <button
+              key={x.id}
+              type="button"
+              onClick={() => setTab(x.id)}
+              className={cn(
+                "shrink-0 px-3 py-2.5 text-sm border-b-2 -mb-px transition-colors",
+                tab === x.id
+                  ? "border-accent text-slate-100"
+                  : "border-transparent text-muted hover:text-slate-300",
+              )}
+            >
+              {x.label}
+            </button>
+          ))}
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
-        <Section icon={Hash} title="Build">
-          <Row label="Version" value={`v${__APP_VERSION__}`} />
-          <Row label="Git" value={__GIT_HASH__ || "unknown"} mono />
-          <Row label="Built at" value={formatBuildAt(__BUILD_AT__)} />
-        </Section>
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+          {tab === "general" && (
+            <>
+              <Section icon={Hash} title={t("build.section")}>
+                <Row label={t("build.version")} value={`v${__APP_VERSION__}`} />
+                <Row label={t("build.git")} value={__GIT_HASH__ || "unknown"} mono />
+                <Row label={t("build.builtAt")} value={formatBuildAt(__BUILD_AT__)} />
+              </Section>
 
-        <Section icon={Keyboard} title="Hotkeys">
-          <div className="divide-y divide-border-subtle/60">
-            {HOTKEYS.map((h) => (
-              <div
-                key={h.combo}
-                className="flex items-center gap-3 py-2 text-sm"
-              >
-                <kbd className="font-mono text-[11px] px-2 py-0.5 rounded border border-border-default text-slate-100 bg-bg-card">
-                  {h.combo}
-                </kbd>
-                <span className="flex-1">{h.what}</span>
-                {h.note && (
-                  <span className="text-[10px] uppercase tracking-wider text-muted">
-                    {h.note}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 text-[11px] text-muted">
-            Custom bindings land in v0.4.2 — for now the global hotkey is
-            best-effort: if another app already owns the combo, the rest of
-            the hub still boots.
-          </div>
-        </Section>
-
-        <Section icon={theme === "dark" ? Moon : Sun} title="Theme">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onThemeChange("dark")}
-              className={cn(
-                "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
-                theme === "dark"
-                  ? "border-border-default bg-bg-elev text-slate-100"
-                  : "border-border-subtle text-muted hover:text-slate-200",
-              )}
-            >
-              <Moon size={13} />
-              Dark
-            </button>
-            <button
-              type="button"
-              onClick={() => onThemeChange("light")}
-              className={cn(
-                "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
-                theme === "light"
-                  ? "border-border-default bg-bg-elev text-slate-100"
-                  : "border-border-subtle text-muted hover:text-slate-200",
-              )}
-            >
-              <Sun size={13} />
-              Light
-            </button>
-          </div>
-          <div className="text-[11px] text-muted">
-            Theme is persisted locally and applied on next app launch.
-          </div>
-        </Section>
-
-        <Section icon={Sparkles} title="Agent Marketplace">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {marketplace.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-xl border border-border-subtle bg-bg-card/50 p-3 space-y-3"
-              >
-                <div className="flex items-start gap-2">
-                  <div
-                    className="w-8 h-8 rounded-lg grid place-items-center text-white text-xs font-semibold"
-                    style={{ background: `linear-gradient(135deg, ${item.accent}, ${item.accent}99)` }}
-                  >
-                    {item.kind === "AI" ? "AI" : "STT"}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <div className="font-medium truncate">{item.name}</div>
-                      {item.installed && (
-                        <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-emerald-500/50 text-emerald-300 bg-emerald-500/10">
-                          Installed
+              <Section icon={Keyboard} title={t("hotkeys.section")}>
+                <div className="divide-y divide-border-subtle/60">
+                  {HOTKEY_ROWS.map((h) => (
+                    <div key={h.combo} className="flex items-center gap-3 py-2 text-sm">
+                      <kbd className="font-mono text-[11px] px-2 py-0.5 rounded border border-border-default text-slate-100 bg-bg-card">
+                        {h.combo}
+                      </kbd>
+                      <span className="flex-1">{t(h.whatKey)}</span>
+                      {h.noteKey && (
+                        <span className="text-[10px] uppercase tracking-wider text-muted">
+                          {t(h.noteKey)}
                         </span>
                       )}
                     </div>
-                    <div className="text-[11px] text-muted">{item.description}</div>
-                  </div>
+                  ))}
                 </div>
+                <div className="mt-3 text-[11px] text-muted">{t("hotkeys.future")}</div>
+              </Section>
+
+              <Section icon={Languages} title={t("lang.section")}>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={item.installAction}
-                    className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
+                    onClick={() => setLocale("en")}
+                    className={cn(
+                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
+                      locale === "en"
+                        ? "border-border-default bg-bg-elev text-slate-100"
+                        : "border-border-subtle text-muted hover:text-slate-200",
+                    )}
                   >
-                    <Download size={12} />
-                    {item.installLabel}
+                    {t("lang.en")}
                   </button>
-                  {item.installed && (
+                  <button
+                    type="button"
+                    onClick={() => setLocale("ru")}
+                    className={cn(
+                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
+                      locale === "ru"
+                        ? "border-border-default bg-bg-elev text-slate-100"
+                        : "border-border-subtle text-muted hover:text-slate-200",
+                    )}
+                  >
+                    {t("lang.ru")}
+                  </button>
+                </div>
+                <div className="text-[11px] text-muted">{t("lang.hint")}</div>
+              </Section>
+
+              <Section icon={theme === "dark" ? Moon : Sun} title={t("theme.section")}>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onThemeChange("dark")}
+                    className={cn(
+                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
+                      theme === "dark"
+                        ? "border-border-default bg-bg-elev text-slate-100"
+                        : "border-border-subtle text-muted hover:text-slate-200",
+                    )}
+                  >
+                    <Moon size={13} />
+                    {t("theme.dark")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onThemeChange("light")}
+                    className={cn(
+                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
+                      theme === "light"
+                        ? "border-border-default bg-bg-elev text-slate-100"
+                        : "border-border-subtle text-muted hover:text-slate-200",
+                    )}
+                  >
+                    <Sun size={13} />
+                    {t("theme.light")}
+                  </button>
+                </div>
+                <div className="text-[11px] text-muted">{t("theme.hint")}</div>
+              </Section>
+            </>
+          )}
+
+          {tab === "marketplace" && (
+            <>
+              <Section icon={Sparkles} title={t("marketplace.section")}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* easySTT */}
+                  <div className="rounded-xl border border-border-subtle bg-bg-card/50 p-3 space-y-3 md:col-span-2">
+                    <div className="flex items-start gap-2">
+                      <div
+                        className="w-8 h-8 rounded-lg grid place-items-center text-white text-xs font-semibold"
+                        style={{
+                          background: "linear-gradient(135deg, #4f8cff, #4f8cff99)",
+                        }}
+                      >
+                        {t("marketplace.kind.utility")}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium truncate">easySTT</div>
+                        <div className="text-[11px] text-muted">
+                          {t("marketplace.easystt.desc")}
+                        </div>
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => onOpenAgentSettings?.(item.id)}
-                      className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
+                      onClick={() => void onInstallEasystt()}
+                      disabled={installingEasystt}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                        "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
+                        installingEasystt && "opacity-60 cursor-not-allowed",
+                      )}
                     >
-                      <Hash size={12} />
-                      Agent settings
+                      <Download size={12} className={installingEasystt ? "animate-pulse" : ""} />
+                      {installingEasystt
+                        ? t("marketplace.easystt.installing")
+                        : t("marketplace.easystt.install")}
                     </button>
-                  )}
+                    {easysttMsg && (
+                      <div className="text-[11px] text-muted break-all">{easysttMsg}</div>
+                    )}
+                  </div>
+
+                  {/* OpenRouter */}
+                  <div className="rounded-xl border border-border-subtle bg-bg-card/50 p-3 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <div
+                        className="w-8 h-8 rounded-lg grid place-items-center text-white text-xs font-semibold"
+                        style={{
+                          background: "linear-gradient(135deg, #5b8def, #5b8def99)",
+                        }}
+                      >
+                        {t("marketplace.kind.ai")}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="font-medium truncate">{t("ai.openrouter.title")}</div>
+                          {openRouterAgent && (
+                            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-emerald-500/50 text-emerald-300 bg-emerald-500/10">
+                              {t("marketplace.badge")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted">
+                          {t("marketplace.openrouter.desc")}
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted">{t("ai.openrouter.blurb")}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={onInstallOpenRouter}
+                        disabled={installingOpenRouter}
+                        className={cn(
+                          "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                          "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
+                          installingOpenRouter && "opacity-60 cursor-not-allowed",
+                        )}
+                      >
+                        <RefreshCw size={12} className={installingOpenRouter ? "animate-spin" : ""} />
+                        {openRouterAgent ? t("marketplace.repair") : t("marketplace.install")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onStartOpenRouter}
+                        disabled={!openRouterAgent}
+                        className={cn(
+                          "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                          "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
+                          !openRouterAgent && "opacity-60 cursor-not-allowed",
+                        )}
+                      >
+                        <Power size={12} />
+                        {openRouterRunning ? t("ai.openrouter.running") : t("ai.openrouter.start")}
+                      </button>
+                      {openRouterAgent && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAgentSettings?.("openrouter-agent")}
+                          className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
+                        >
+                          <Hash size={12} />
+                          {t("marketplace.agentSettings")}
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-[11px]">
+                      <span className="text-muted">{t("ai.statusLabel")}: </span>
+                      <span
+                        className={cn(
+                          openRouterAgent && openRouterRunning && "text-emerald-400",
+                          openRouterAgent && !openRouterRunning && "text-amber-400",
+                          !openRouterAgent && "text-muted",
+                        )}
+                      >
+                        {openRouterAgent
+                          ? openRouterRunning
+                            ? t("ai.openrouter.status.installedRun")
+                            : t("ai.openrouter.status.installedStop")
+                          : t("ai.openrouter.status.missing")}
+                      </span>
+                    </div>
+                    {orMsg && <div className="text-[11px] text-muted break-all">{orMsg}</div>}
+                  </div>
+
+                  {/* Cloud.ru */}
+                  <div className="rounded-xl border border-border-subtle bg-bg-card/50 p-3 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <div
+                        className="w-8 h-8 rounded-lg grid place-items-center text-white text-xs font-semibold"
+                        style={{
+                          background: "linear-gradient(135deg, #f59e0b, #f59e0b99)",
+                        }}
+                      >
+                        {t("marketplace.kind.ai")}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="font-medium truncate">{t("ai.cloudru.title")}</div>
+                          {cloudRuAgent && (
+                            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-emerald-500/50 text-emerald-300 bg-emerald-500/10">
+                              {t("marketplace.badge")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted">
+                          {t("marketplace.cloudru.desc")}
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted">{t("ai.cloudru.blurb")}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={onInstallCloudRu}
+                        disabled={installingCloudRu}
+                        className={cn(
+                          "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                          "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
+                          installingCloudRu && "opacity-60 cursor-not-allowed",
+                        )}
+                      >
+                        <RefreshCw size={12} className={installingCloudRu ? "animate-spin" : ""} />
+                        {cloudRuAgent ? t("marketplace.repair") : t("marketplace.install")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onStartCloudRu}
+                        disabled={!cloudRuAgent}
+                        className={cn(
+                          "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                          "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
+                          !cloudRuAgent && "opacity-60 cursor-not-allowed",
+                        )}
+                      >
+                        <Power size={12} />
+                        {cloudRuRunning ? t("ai.openrouter.running") : t("ai.openrouter.start")}
+                      </button>
+                      {cloudRuAgent && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenAgentSettings?.("cloudru-agent")}
+                          className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
+                        >
+                          <Hash size={12} />
+                          {t("marketplace.agentSettings")}
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-[11px]">
+                      <span className="text-muted">{t("ai.statusLabel")}: </span>
+                      <span
+                        className={cn(
+                          cloudRuAgent && cloudRuRunning && "text-emerald-400",
+                          cloudRuAgent && !cloudRuRunning && "text-amber-400",
+                          !cloudRuAgent && "text-muted",
+                        )}
+                      >
+                        {cloudRuAgent
+                          ? cloudRuRunning
+                            ? t("ai.openrouter.status.installedRun")
+                            : t("ai.openrouter.status.installedStop")
+                          : t("ai.openrouter.status.missing")}
+                      </span>
+                    </div>
+                    {crMsg && <div className="text-[11px] text-muted break-all">{crMsg}</div>}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-
-        <Section icon={Sparkles} title="OpenRouter Agent">
-          <p className="text-xs text-muted">
-            Install and run a built-in managed AI agent (OpenRouter-backed)
-            directly from Agent Hub — no manual `npm start`.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={onInstallOpenRouter}
-              disabled={installingOpenRouter}
-              className={cn(
-                "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
-                "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
-                installingOpenRouter && "opacity-60 cursor-not-allowed",
-              )}
-            >
-              <RefreshCw size={12} className={installingOpenRouter ? "animate-spin" : ""} />
-              {openRouterAgent ? "Repair / Reinstall" : "Install OpenRouter Agent"}
-            </button>
-            <button
-              type="button"
-              onClick={onStartOpenRouter}
-              disabled={!openRouterAgent}
-              className={cn(
-                "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
-                "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
-                !openRouterAgent && "opacity-60 cursor-not-allowed",
-              )}
-            >
-              <Power size={12} />
-              {openRouterRunning ? "Running" : "Start"}
-            </button>
-          </div>
-          <div className="text-[11px] text-muted">
-            Status:{" "}
-            {openRouterAgent
-              ? openRouterRunning
-                ? "installed and running"
-                : "installed (stopped)"
-              : "not installed"}
-          </div>
-          {openRouterInstallMsg && (
-            <div className="text-[11px] text-muted break-all">{openRouterInstallMsg}</div>
-          )}
-        </Section>
-
-        <Section icon={FolderOpen} title="Storage">
-          <Row
-            label="Manifest directory"
-            value={manifestDir ?? "~/.config/agent-hub/agents/"}
-            mono
-          />
-          {statsError ? (
-            <div className="text-xs text-red-300">
-              chat database stats failed: {statsError}
-            </div>
-          ) : statsLoading ? (
-            <div className="text-xs text-muted">Loading chat stats…</div>
-          ) : stats ? (
-            <>
-              <Row label="Chat database" value={stats.path} mono />
-              <Row label="Database size" value={formatBytes(stats.size_bytes)} />
-              <Row
-                label="Conversations cached"
-                value={String(stats.conversations)}
-              />
-              <Row
-                label="Messages cached"
-                value={`${stats.messages} (${stats.fts_indexed} indexed)`}
-              />
+              </Section>
             </>
-          ) : (
-            <div className="text-xs text-muted">
-              Chat cache disabled (database failed to open at startup).
-            </div>
           )}
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={refreshStats}
-              className="inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
-            >
-              <RefreshCw size={12} />
-              Refresh
-            </button>
-          </div>
-        </Section>
 
-        <Section icon={Power} title="Auto-start with hub">
-          {autoStartLoading ? (
-            <div className="text-xs text-muted">Loading agents…</div>
-          ) : autoStartRows.length === 0 ? (
-            <div className="text-xs text-muted">
-              No agents discovered yet. Drop a manifest into the directory
-              above and the list will populate.
-            </div>
-          ) : (
-            <div className="divide-y divide-border-subtle/60">
-              {autoStartRows.map((r) => (
-                <AutoStartRowView
-                  key={r.agentId}
-                  row={r}
-                  onToggle={onToggleAutoStart}
+          {tab === "system" && (
+            <>
+              <Section icon={FolderOpen} title={t("storage.section")}>
+                <Row
+                  label={t("storage.manifestDir")}
+                  value={manifestDir ?? "~/.config/agent-hub/agents/"}
+                  mono
                 />
-              ))}
-            </div>
+                {statsError ? (
+                  <div className="text-xs text-red-300">
+                    {t("storage.statsFailed")}: {statsError}
+                  </div>
+                ) : statsLoading ? (
+                  <div className="text-xs text-muted">{t("storage.statsLoading")}</div>
+                ) : stats ? (
+                  <>
+                    <Row label={t("storage.chatDb")} value={stats.path} mono />
+                    <Row label={t("storage.dbSize")} value={formatBytes(stats.size_bytes)} />
+                    <Row label={t("storage.conv")} value={String(stats.conversations)} />
+                    <Row
+                      label={t("storage.msg")}
+                      value={`${stats.messages} (${stats.fts_indexed} indexed)`}
+                    />
+                  </>
+                ) : (
+                  <div className="text-xs text-muted">{t("storage.cacheOff")}</div>
+                )}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={refreshStats}
+                    className="inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
+                  >
+                    <RefreshCw size={12} />
+                    {t("storage.refresh")}
+                  </button>
+                </div>
+              </Section>
+
+              <Section icon={Power} title={t("autostart.section")}>
+                {autoStartLoading ? (
+                  <div className="text-xs text-muted">{t("autostart.loading")}</div>
+                ) : autoStartRows.length === 0 ? (
+                  <div className="text-xs text-muted">{t("autostart.empty")}</div>
+                ) : (
+                  <div className="divide-y divide-border-subtle/60">
+                    {autoStartRows.map((r) => (
+                      <AutoStartRowView key={r.agentId} row={r} onToggle={onToggleAutoStart} />
+                    ))}
+                  </div>
+                )}
+              </Section>
+
+              <Section icon={Database} title={t("chat.section")}>
+                <p className="text-xs text-muted">{t("chat.blurb1")}</p>
+                <p className="text-xs text-muted">{t("chat.blurb2")}</p>
+              </Section>
+            </>
           )}
-        </Section>
 
-        <Section icon={Database} title="Chat history">
-          <p className="text-xs text-muted">
-            Every message you send to an AI agent is mirrored into the
-            local SQLite cache so chat history survives agent crashes,
-            reinstalls, and offline opens. The agent stays canonical for
-            whatever it remembers — the hub just keeps a durable copy.
-          </p>
-          <p className="text-xs text-muted">
-            Search uses SQLite FTS5 with diacritic folding and prefix
-            search on the last typed token. Type ≥ 2 characters in the
-            command palette to scan all cached conversations.
-          </p>
-        </Section>
-
-        <Section icon={FileText} title="About">
-          <Row label="App" value="Agent Hub" />
-          <Row label="License" value="MIT" />
-          <a
-            href="https://github.com/elementary1997/agent-hub"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
-          >
-            <Github size={12} />
-            Source on GitHub
-          </a>
-        </Section>
+          {tab === "about" && (
+            <Section icon={FileText} title={t("about.section")}>
+              <Row label={t("about.app")} value="Agent Hub" />
+              <Row label={t("about.license")} value="MIT" />
+              <a
+                href="https://github.com/elementary1997/agent-hub"
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
+              >
+                <Github size={12} />
+                {t("about.github")}
+              </a>
+            </Section>
+          )}
+        </div>
       </div>
     </div>
   );

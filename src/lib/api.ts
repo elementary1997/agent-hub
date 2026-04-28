@@ -155,3 +155,22 @@ export interface InstallOpenRouterResult {
 export function installOpenRouterAgent(): Promise<InstallOpenRouterResult> {
   return invoke<InstallOpenRouterResult>("install_openrouter_agent");
 }
+
+export interface InstallCloudRuResult {
+  projectDir: string;
+  manifestPath: string;
+  installed: boolean;
+}
+
+export function installCloudRuAgent(): Promise<InstallCloudRuResult> {
+  return invoke<InstallCloudRuResult>("install_cloudru_agent");
+}
+
+export interface EasysttInstallResult {
+  downloadedPath: string;
+  assetName: string;
+}
+
+export function installEasysttLatest(): Promise<EasysttInstallResult> {
+  return invoke<EasysttInstallResult>("install_easystt_latest");
+}

@@ -4,9 +4,10 @@ import { AgentCard } from "@/components/AgentCard";
 import { AgentDetail } from "@/components/AgentDetail";
 import { ChatView } from "@/components/ChatView";
 import { CommandPalette } from "@/components/CommandPalette";
-import { SettingsView } from "@/components/SettingsView";
+import { SettingsView, type SettingsTab } from "@/components/SettingsView";
 import { Sidebar, type SidebarFilter } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
+import { useI18n } from "@/lib/i18n";
 import { useAgentStore } from "@/store/agents";
 import {
   agentsDir,
@@ -40,6 +41,7 @@ function sortAgents(list: Agent[]): Agent[] {
 }
 
 export default function App() {
+  const { t } = useI18n();
   const agentsMap = useAgentStore((s) => s.agents);
   const setAll = useAgentStore((s) => s.setAll);
   const upsert = useAgentStore((s) => s.upsert);
@@ -57,12 +59,15 @@ export default function App() {
   const [chatConversation, setChatConversation] = useState<string | null>(null);
   const [detailAgent, setDetailAgent] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("general");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const saved = localStorage.getItem("hub.theme");
     if (saved === "light" || saved === "dark") return saved;
     return "dark";
   });
+
+  const toggleTheme = () => setTheme((x) => (x === "dark" ? "light" : "dark"));
 
   // ⌘K / Ctrl+K opens the command palette from anywhere.
   useEffect(() => {
@@ -95,6 +100,14 @@ export default function App() {
   const handleOpenSettings = () => {
     setChatAgent(null);
     setDetailAgent(null);
+    setSettingsInitialTab("general");
+    setSettingsOpen(true);
+  };
+
+  const handleOpenMarketplace = () => {
+    setChatAgent(null);
+    setDetailAgent(null);
+    setSettingsInitialTab("marketplace");
     setSettingsOpen(true);
   };
 
@@ -230,6 +243,7 @@ export default function App() {
     return (
       <div className="h-screen w-screen overflow-hidden">
         <SettingsView
+          initialTab={settingsInitialTab}
           theme={theme}
           onThemeChange={setTheme}
           onOpenAgentSettings={(id) => {
@@ -252,26 +266,31 @@ export default function App() {
         counts={counts}
         tagCounts={tagCounts}
         onOpenPalette={() => setPaletteOpen(true)}
-        onOpenSettings={handleOpenSettings}
+        onOpenMarketplace={handleOpenMarketplace}
       />
 
       <main className="flex-1 flex flex-col min-w-0">
         <Topbar
+          theme={theme}
+          onToggleTheme={toggleTheme}
           title={
             filter === "all"
-              ? "All agents"
+              ? t("grid.all")
               : filter === "running"
-                ? "Running"
+                ? t("grid.running")
                 : filter === "ai"
-                  ? "AI"
+                  ? t("grid.ai")
                   : filter.startsWith("tag:")
-                    ? `#${filter.slice(4)}`
-                    : "Utilities"
+                    ? `${t("grid.tagPrefix")}${filter.slice(4)}`
+                    : t("grid.utilities")
           }
           subtitle={
             !loaded && !error
-              ? "Loading…"
-              : `${visible.length} of ${agents.length} agent${agents.length === 1 ? "" : "s"}`
+              ? t("grid.subtitle.loading")
+              : t("grid.subtitle.count", {
+                  visible: visible.length,
+                  total: agents.length,
+                })
           }
           onOpenPalette={() => setPaletteOpen(true)}
         />
@@ -280,7 +299,7 @@ export default function App() {
           {error ? (
             <ErrorState message={error} />
           ) : visible.length === 0 ? (
-            <EmptyState dir={manifestDir} loaded={loaded} />
+            <EmptyState dir={manifestDir ?? null} loaded={loaded} />
           ) : (
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               <AnimatePresence mode="popLayout">
@@ -303,18 +322,20 @@ export default function App() {
 }
 
 function EmptyState({ dir, loaded }: { dir: string | null; loaded: boolean }) {
+  const { t } = useI18n();
+  const path = dir ?? "~/.config/agent-hub/agents/";
   return (
     <div className="h-full grid place-items-center text-center">
       <div className="max-w-md">
         <div className="text-lg font-semibold mb-1">
-          {loaded ? "No agents yet" : "Looking for agents…"}
+          {loaded ? t("empty.title.none") : t("empty.title.wait")}
         </div>
         <p className="text-sm text-muted">
-          Drop an agent manifest into{" "}
+          {t("empty.intro")}{" "}
           <code className="font-mono text-xs px-1.5 py-0.5 rounded bg-bg-card border border-border-subtle break-all">
-            {dir ?? "~/.config/agent-hub/agents/"}
+            {path}
           </code>{" "}
-          and the hub will pick it up automatically.
+          {t("empty.outro")}
         </p>
       </div>
     </div>
@@ -322,10 +343,11 @@ function EmptyState({ dir, loaded }: { dir: string | null; loaded: boolean }) {
 }
 
 function ErrorState({ message }: { message: string }) {
+  const { t } = useI18n();
   return (
     <div className="h-full grid place-items-center text-center">
       <div className="max-w-md">
-        <div className="text-lg font-semibold text-red-300 mb-1">Failed to load agents</div>
+        <div className="text-lg font-semibold text-red-300 mb-1">{t("error.loadTitle")}</div>
         <p className="text-sm text-muted break-words">{message}</p>
       </div>
     </div>

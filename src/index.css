@@ -21,20 +21,20 @@
     color-scheme: dark;
   }
   :root[data-theme="light"] {
-    --bg-base: #f5f7ff;
+    --bg-base: #dfe4ee;
     --bg-surface: #ffffff00;
-    --bg-card: #ffffff;
-    --bg-elev: #eef1ff;
-    --border-subtle: #d6ddf1;
-    --border-default: #bbc7e6;
-    --border-strong: #97a6cf;
-    --accent: #5a4dff;
-    --accent-hover: #4c40e4;
-    --accent-muted: #5a4dff22;
-    --success: #2e9e6d;
-    --warn: #cb7f14;
-    --danger: #cc304b;
-    --muted: #5e6a8d;
+    --bg-card: #e9ecf4;
+    --bg-elev: #e2e6ef;
+    --border-subtle: #c5ccd9;
+    --border-default: #aeb8ca;
+    --border-strong: #95a0b5;
+    --accent: #5548e8;
+    --accent-hover: #483abf;
+    --accent-muted: #5548e822;
+    --success: #2a8f62;
+    --warn: #b97212;
+    --danger: #b82d44;
+    --muted: #5a6278;
     color-scheme: light;
   }
   html, body, #root {
@@ -57,12 +57,12 @@
   :root[data-theme="light"] body {
     background: radial-gradient(
         1200px 600px at 20% -10%,
-        rgba(90, 77, 255, 0.12),
+        rgba(90, 77, 255, 0.05),
         transparent 70%
       ),
       radial-gradient(
         1200px 600px at 100% 100%,
-        rgba(72, 150, 255, 0.08),
+        rgba(72, 150, 255, 0.04),
         transparent 70%
       ),
       var(--bg-base);
