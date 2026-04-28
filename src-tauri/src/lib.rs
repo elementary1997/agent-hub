@@ -1,9 +1,19 @@
-//! Agent Hub Rust core (v0.1.0).
+//! Agent Hub Rust core (v0.1.1).
 //!
-//! This commit ships the Tauri shell only. The agent registry, HTTP/WS clients,
-//! process supervisor and event bus arrive in a follow-up — see ROADMAP.md.
+//! - Manifest registry + filesystem watcher (`agents` module).
+//! - HTTP poller per agent (`/status` every 3s, results pushed to the
+//!   frontend via `agent-upserted` / `agent-removed` events).
+//! - Tauri commands: `list_agents`, `agent_open_native`, `agent_quit`,
+//!   `agents_dir`, `ping`.
+//!
+//! WebSocket event streams (`/events`) and the managed-agent process
+//! supervisor land in v0.1.2 / v0.3 — see ROADMAP.md.
+
+mod agents;
 
 use tauri::Manager;
+
+use crate::agents::Registry;
 
 #[tauri::command]
 fn ping() -> &'static str {
@@ -19,12 +29,22 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
+            let registry = Registry::new();
+            app.manage(registry.clone());
+            agents::start(app.handle().clone(), registry);
+
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_focus();
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![ping])
+        .invoke_handler(tauri::generate_handler![
+            ping,
+            agents::list_agents,
+            agents::agent_open_native,
+            agents::agent_quit,
+            agents::agents_dir,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Agent Hub");
 }
