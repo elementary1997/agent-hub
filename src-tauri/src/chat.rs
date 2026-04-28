@@ -14,9 +14,10 @@ use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::agents::Registry;
+use crate::chatdb::ChatDb;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChatConversation {
@@ -95,18 +96,72 @@ async fn json_request<T: serde::de::DeserializeOwned>(
 }
 
 // ─── Tauri commands: CRUD ──────────────────────────────────────────────────
+//
+// All CRUD endpoints are *write-through*: they hit the agent first, and on
+// success replicate the change into the local SQLite cache. Reads prefer the
+// agent's view (it is canonical for whatever it remembers), but augment it
+// with whatever messages we have cached locally so the UI never loses
+// history when an agent forgets / restarts / gets reinstalled.
+
+fn db_of(app: &AppHandle) -> Option<Arc<ChatDb>> {
+    app.try_state::<Arc<ChatDb>>().map(|s| s.inner().clone())
+}
 
 #[tauri::command]
 pub async fn chat_list_conversations(
+    app: AppHandle,
     agent_id: String,
     registry: tauri::State<'_, Arc<Registry>>,
 ) -> Result<Vec<ChatConversation>, String> {
     let endpoint = endpoint_for(&registry, &agent_id).await?;
-    json_request(&registry, reqwest::Method::GET, format!("{endpoint}/conversations"), None).await
+    let live = json_request::<Vec<ChatConversation>>(
+        &registry,
+        reqwest::Method::GET,
+        format!("{endpoint}/conversations"),
+        None,
+    )
+    .await;
+
+    if let Some(db) = db_of(&app) {
+        match live {
+            Ok(remote) => {
+                // Mirror the live list into the cache so future offline opens
+                // see the same conversations. We do NOT delete cached convs
+                // that the agent forgot — the hub owns those by design.
+                for c in &remote {
+                    let _ = db.upsert_conversation(
+                        &agent_id,
+                        &c.id,
+                        c.title.as_deref(),
+                        c.system_prompt.as_deref(),
+                    );
+                }
+                Ok(remote)
+            }
+            Err(_) => {
+                // Offline / agent down: fall back to whatever we cached.
+                let cached = db.list_conversations(&agent_id).map_err(|e| e.to_string())?;
+                Ok(cached
+                    .into_iter()
+                    .map(|c| ChatConversation {
+                        id: c.id,
+                        title: c.title,
+                        system_prompt: c.system_prompt,
+                        messages: Vec::new(),
+                        updated_at: Some(c.updated_at),
+                        message_count: Some(c.message_count),
+                    })
+                    .collect())
+            }
+        }
+    } else {
+        live
+    }
 }
 
 #[tauri::command]
 pub async fn chat_create_conversation(
+    app: AppHandle,
     agent_id: String,
     body: CreateConversation,
     registry: tauri::State<'_, Arc<Registry>>,
@@ -116,33 +171,108 @@ pub async fn chat_create_conversation(
         "title": body.title,
         "system_prompt": body.system_prompt,
     });
-    json_request(
+    let conv: ChatConversation = json_request(
         &registry,
         reqwest::Method::POST,
         format!("{endpoint}/conversations"),
         Some(&payload),
     )
-    .await
+    .await?;
+    if let Some(db) = db_of(&app) {
+        let _ = db.upsert_conversation(
+            &agent_id,
+            &conv.id,
+            conv.title.as_deref(),
+            conv.system_prompt.as_deref(),
+        );
+    }
+    Ok(conv)
 }
 
 #[tauri::command]
 pub async fn chat_get_conversation(
+    app: AppHandle,
     agent_id: String,
     id: String,
     registry: tauri::State<'_, Arc<Registry>>,
 ) -> Result<ChatConversation, String> {
     let endpoint = endpoint_for(&registry, &agent_id).await?;
-    json_request(
+    let live: Result<ChatConversation, String> = json_request(
         &registry,
         reqwest::Method::GET,
         format!("{endpoint}/conversations/{id}"),
         None,
     )
-    .await
+    .await;
+
+    let db = db_of(&app);
+    match live {
+        Ok(mut conv) => {
+            // Live succeeded — merge cached messages that the agent may have
+            // dropped. We trust the agent's content order (fresh is fresh)
+            // and only fill in what's missing by id.
+            if let Some(db) = db {
+                let _ = db.upsert_conversation(
+                    &agent_id,
+                    &conv.id,
+                    conv.title.as_deref(),
+                    conv.system_prompt.as_deref(),
+                );
+                if let Ok(cached) = db.list_messages(&conv.id) {
+                    let mut have: std::collections::HashSet<String> =
+                        conv.messages.iter().map(|m| m.id.clone()).collect();
+                    for m in cached {
+                        if !have.contains(&m.id) {
+                            have.insert(m.id.clone());
+                            conv.messages.push(ChatMessage {
+                                id: m.id,
+                                role: m.role,
+                                content: m.content,
+                                at: Some(m.at),
+                            });
+                        }
+                    }
+                    // Stable ordering by `at` so re-merged messages slot in.
+                    conv.messages.sort_by(|a, b| a.at.cmp(&b.at));
+                    conv.message_count = Some(conv.messages.len());
+                }
+            }
+            Ok(conv)
+        }
+        Err(_) => {
+            // Agent down — serve from cache.
+            let db = db.ok_or_else(|| "agent unreachable and chat cache disabled".to_string())?;
+            let conv = db
+                .get_conversation(&id)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("conversation {id} not found in cache"))?;
+            let messages = db
+                .list_messages(&id)
+                .map_err(|e| e.to_string())?
+                .into_iter()
+                .map(|m| ChatMessage {
+                    id: m.id,
+                    role: m.role,
+                    content: m.content,
+                    at: Some(m.at),
+                })
+                .collect::<Vec<_>>();
+            let count = messages.len();
+            Ok(ChatConversation {
+                id: conv.id,
+                title: conv.title,
+                system_prompt: conv.system_prompt,
+                messages,
+                updated_at: Some(conv.updated_at),
+                message_count: Some(count),
+            })
+        }
+    }
 }
 
 #[tauri::command]
 pub async fn chat_delete_conversation(
+    app: AppHandle,
     agent_id: String,
     id: String,
     registry: tauri::State<'_, Arc<Registry>>,
@@ -157,11 +287,15 @@ pub async fn chat_delete_conversation(
     if !resp.status().is_success() {
         return Err(format!("{}: {}", resp.status(), resp.text().await.unwrap_or_default()));
     }
+    if let Some(db) = db_of(&app) {
+        let _ = db.delete_conversation(&id);
+    }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn chat_patch_conversation(
+    app: AppHandle,
     agent_id: String,
     id: String,
     body: PatchConversation,
@@ -172,13 +306,22 @@ pub async fn chat_patch_conversation(
         "title": body.title,
         "system_prompt": body.system_prompt,
     });
-    json_request(
+    let conv: ChatConversation = json_request(
         &registry,
         reqwest::Method::PATCH,
         format!("{endpoint}/conversations/{id}"),
         Some(&payload),
     )
-    .await
+    .await?;
+    if let Some(db) = db_of(&app) {
+        let _ = db.upsert_conversation(
+            &agent_id,
+            &conv.id,
+            conv.title.as_deref(),
+            conv.system_prompt.as_deref(),
+        );
+    }
+    Ok(conv)
 }
 
 // ─── Tauri command: streaming send ─────────────────────────────────────────
@@ -208,18 +351,33 @@ pub async fn chat_send_message(
         "model": body.model,
     });
 
+    // Write the user message into the cache up-front so it survives even if
+    // the stream blows up halfway through.
+    if let Some(db) = db_of(&app) {
+        let user_id = format!("local-user-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        let _ = db.insert_message(&conversation_id, &user_id, "user", &body.content);
+    }
+
     let request_id_for_errors = request_id.clone();
-    if let Err(e) = run_stream(&app, &registry, &request_id, &url, &payload).await {
+    if let Err(e) = run_stream(&app, &registry, &request_id, &conversation_id, &url, &payload).await
+    {
         emit_chat(&app, &request_id_for_errors, "error", &json!({ "message": e.to_string() }));
         return Err(e.to_string());
     }
     Ok(())
 }
 
+#[derive(Default)]
+struct AssistantBuf {
+    id: Option<String>,
+    text: String,
+}
+
 async fn run_stream(
     app: &AppHandle,
     registry: &Arc<Registry>,
     request_id: &str,
+    conversation_id: &str,
     url: &str,
     payload: &Value,
 ) -> Result<()> {
@@ -240,6 +398,8 @@ async fn run_stream(
 
     let mut buffer: Vec<u8> = Vec::with_capacity(4096);
     let mut stream = resp.bytes_stream();
+    let mut assistant = AssistantBuf::default();
+
     while let Some(chunk) = stream.next().await {
         let bytes = chunk.context("read sse chunk")?;
         buffer.extend_from_slice(&bytes);
@@ -248,7 +408,52 @@ async fn run_stream(
             let frame = buffer.drain(..pos.end).collect::<Vec<_>>();
             let frame = &frame[..pos.payload_end];
             if let Some(event) = parse_sse_frame(frame) {
-                forward_event(app, request_id, &event);
+                let parsed: Value = serde_json::from_str(&event.data)
+                    .unwrap_or_else(|_| json!({ "type": "delta", "data": { "text": event.data } }));
+                let kind = parsed
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("delta")
+                    .to_string();
+                let data = parsed.get("data").cloned().unwrap_or(Value::Null);
+
+                // Track assistant id and accumulate text deltas so we can
+                // persist a single assistant message at the end. The agent
+                // is free to omit `data.id` — we'll synthesise one then.
+                match kind.as_str() {
+                    "start" => {
+                        if let Some(id) = data.get("id").and_then(|v| v.as_str()) {
+                            assistant.id = Some(id.to_string());
+                        }
+                    }
+                    "delta" => {
+                        if let Some(t) = data.get("text").and_then(|v| v.as_str()) {
+                            assistant.text.push_str(t);
+                        }
+                    }
+                    _ => {}
+                }
+
+                emit_chat(app, request_id, &kind, &data);
+
+                if kind == "end" {
+                    if let Some(db) = db_of(app) {
+                        if !assistant.text.is_empty() {
+                            let id = assistant.id.clone().unwrap_or_else(|| {
+                                format!(
+                                    "local-asst-{}",
+                                    chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+                                )
+                            });
+                            let _ = db.insert_message(
+                                conversation_id,
+                                &id,
+                                "assistant",
+                                &json!({ "text": assistant.text }),
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -306,20 +511,6 @@ fn parse_sse_frame(bytes: &[u8]) -> Option<SseEvent> {
     } else {
         Some(ev)
     }
-}
-
-fn forward_event(app: &AppHandle, request_id: &str, ev: &SseEvent) {
-    let payload: Value = match serde_json::from_str(&ev.data) {
-        Ok(v) => v,
-        Err(_) => json!({ "type": "delta", "data": { "text": ev.data } }),
-    };
-    let kind = payload
-        .get("type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("delta")
-        .to_string();
-    let data = payload.get("data").cloned().unwrap_or(Value::Null);
-    emit_chat(app, request_id, &kind, &data);
 }
 
 fn emit_chat(app: &AppHandle, request_id: &str, kind: &str, data: &Value) {

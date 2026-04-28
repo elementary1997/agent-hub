@@ -11,6 +11,7 @@
 
 mod agents;
 mod chat;
+mod chatdb;
 mod prefs;
 mod supervisor;
 
@@ -19,7 +20,10 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+use std::sync::Arc;
+
 use crate::agents::Registry;
+use crate::chatdb::ChatDb;
 use crate::supervisor::Supervisor;
 
 #[tauri::command]
@@ -71,6 +75,22 @@ pub fn run() {
 
             let supervisor = Supervisor::new(app.handle().clone(), registry.clone());
             app.manage(supervisor);
+
+            // Local chat history cache. Failure to open the DB is non-fatal:
+            // the hub falls back to live-only mode (UI sees only what the
+            // current agent reports), which is exactly the pre-v0.2.1
+            // behaviour.
+            let db_path = app
+                .path()
+                .app_data_dir()
+                .map(|d| d.join("chat.db"))
+                .unwrap_or_else(|_| std::path::PathBuf::from("chat.db"));
+            match ChatDb::open(db_path) {
+                Ok(db) => {
+                    app.manage(Arc::new(db));
+                }
+                Err(e) => eprintln!("[chatdb] disabled — open failed: {e:#}"),
+            }
 
             agents::start(app.handle().clone(), registry);
 

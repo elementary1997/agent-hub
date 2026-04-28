@@ -40,18 +40,24 @@ Goal: a real chat with an AI agent inside the hub.
 - [x] Model picker (driven by `ai.models`)
 - [x] Conversation list / rename (via system prompt save) / delete
 
-### v0.2.1 — Persistence + reference adapter (next)
+### v0.2.1 — Persistence + reference adapter
 
-- [ ] SQLite via `tauri-plugin-sql` for local cache of `conversations` /
-      `messages` so chat survives agent restarts
-- [ ] Conversation search (FTS5)
-- [ ] Image / audio attachments where `supports_attachments` allows
-- [ ] **Reference AI agent** — thin adapter over Cloud.ru / OpenRouter
-      (re-uses keys already configured in easySTT). Implements
+- [x] **v0.2.1a** SQLite-backed chat cache (`chatdb.rs`, rusqlite + bundled
+      SQLite). Write-through on every CRUD success; user message persisted
+      up-front; SSE `delta` frames accumulated and the final assistant
+      message committed on `end`. List / get fall back to the cache when
+      the agent is unreachable, so history survives agent crashes,
+      reinstalls, and offline opens.
+- [ ] **v0.2.1b** Conversation search (FTS5) over the existing tables.
+- [ ] **v0.2.1c** Image / audio attachments where `supports_attachments`
+      allows — content blob stored on disk under the app data dir,
+      referenced by id from `messages.content`.
+- [ ] **v0.2.1d** Reference AI agent — thin adapter over Cloud.ru /
+      OpenRouter (re-uses keys already configured in easySTT). Implements
       `kind: "ai"` contract end-to-end. ~400 LoC, separate repo.
 
-End state (after v0.2.1): open hub → click AI agent → start a chat →
-tokens stream in, history survives restarts.
+End state (after full v0.2.1): open hub → click AI agent → start a chat →
+tokens stream in, history survives restarts even if the agent is gone.
 
 ## v0.3 — Process Manager + Settings
 

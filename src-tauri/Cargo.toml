@@ -1,6 +1,6 @@
 [package]
 name = "agent-hub"
-version = "0.4.1"
+version = "0.4.2"
 description = "Local-first dashboard and supervisor for personal mini-agents"
 authors = []
 license = "MIT"
@@ -29,6 +29,8 @@ notify = "7"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 tokio-tungstenite = { version = "0.24", default-features = false, features = ["handshake"] }
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 
 [profile.release]
 opt-level = 3
