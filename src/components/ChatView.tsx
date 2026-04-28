@@ -38,6 +38,12 @@ import { cn } from "@/lib/cn";
 interface ChatViewProps {
   agentId: string;
   onBack: () => void;
+  /**
+   * If set, the chat opens with this conversation pre-selected — used when
+   * the command palette deep-links into a search hit. Honored once on mount
+   * and whenever the value changes.
+   */
+  initialConversationId?: string | null;
 }
 
 interface StreamState {
@@ -64,7 +70,11 @@ function makeRequestId(): string {
   return `req_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
 }
 
-export function ChatView({ agentId, onBack }: ChatViewProps) {
+export function ChatView({
+  agentId,
+  onBack,
+  initialConversationId,
+}: ChatViewProps) {
   const agent = useAgentStore((s) => s.agents[agentId]);
 
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -97,14 +107,30 @@ export function ChatView({ agentId, onBack }: ChatViewProps) {
       );
       setConversations(sorted);
       if (!activeId && sorted.length > 0) {
-        setActiveId(sorted[0].id);
+        // Honour the deep-link target if it's actually in this agent's
+        // conversation list, otherwise fall back to most-recent.
+        const target =
+          initialConversationId &&
+          sorted.some((c) => c.id === initialConversationId)
+            ? initialConversationId
+            : sorted[0].id;
+        setActiveId(target);
       }
     } catch (e) {
       setError(String(e));
     } finally {
       setConversationsLoading(false);
     }
-  }, [agentId, activeId]);
+  }, [agentId, activeId, initialConversationId]);
+
+  // If a new deep-link arrives while the chat is already mounted (palette
+  // jump-to-message between two open conversations), switch to it.
+  useEffect(() => {
+    if (initialConversationId && initialConversationId !== activeId) {
+      setActiveId(initialConversationId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialConversationId]);
 
   useEffect(() => {
     setActiveId(null);

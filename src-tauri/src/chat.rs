@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::agents::Registry;
-use crate::chatdb::ChatDb;
+use crate::chatdb::{ChatDb, SearchHit};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChatConversation {
@@ -322,6 +322,27 @@ pub async fn chat_patch_conversation(
         );
     }
     Ok(conv)
+}
+
+// ─── Tauri command: full-text search ──────────────────────────────────────
+
+/// Searches cached message bodies via FTS5. The query is treated as
+/// search-as-you-type — the last token is matched with a prefix, all
+/// previous tokens are required as exact terms (FTS5 implicit AND).
+/// Returns at most `limit` (default 30) most-recent hits across every
+/// agent's conversations.
+#[tauri::command]
+pub async fn chat_search(
+    app: AppHandle,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<SearchHit>, String> {
+    let db = match db_of(&app) {
+        Some(db) => db,
+        None => return Ok(Vec::new()),
+    };
+    let limit = limit.unwrap_or(30).min(100);
+    db.search_messages(&query, limit).map_err(|e| e.to_string())
 }
 
 // ─── Tauri command: streaming send ─────────────────────────────────────────

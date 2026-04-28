@@ -48,7 +48,15 @@ Goal: a real chat with an AI agent inside the hub.
       message committed on `end`. List / get fall back to the cache when
       the agent is unreachable, so history survives agent crashes,
       reinstalls, and offline opens.
-- [ ] **v0.2.1b** Conversation search (FTS5) over the existing tables.
+- [x] **v0.2.1b** Conversation search (FTS5). Virtual `messages_fts`
+      table, `unicode61` tokenizer with diacritic folding, recursive
+      JSON-text projection (biased toward `text`/`content`/`delta`), and
+      first-run backfill of pre-existing rows. Exposed as `chat_search`
+      Tauri command with safe prefix-search query building (last token
+      gets `*`, every token quoted to neutralise FTS5 syntax). Wired into
+      the command palette: typing ≥ 2 characters debounces a search and
+      adds matching message snippets alongside agent actions, deep-linking
+      into the right conversation on Enter.
 - [ ] **v0.2.1c** Image / audio attachments where `supports_attachments`
       allows — content blob stored on disk under the app data dir,
       referenced by id from `messages.content`.

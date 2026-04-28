@@ -53,6 +53,7 @@ export default function App() {
 
   const [filter, setFilter] = useState<SidebarFilter>("all");
   const [chatAgent, setChatAgent] = useState<string | null>(null);
+  const [chatConversation, setChatConversation] = useState<string | null>(null);
   const [detailAgent, setDetailAgent] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -68,8 +69,9 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const handleOpenChat = (id: string) => {
+  const handleOpenChat = (id: string, conversationId?: string | null) => {
     setDetailAgent(null);
+    setChatConversation(conversationId ?? null);
     setChatAgent(id);
   };
   const handleOpenDetail = (id: string) => {
@@ -178,7 +180,14 @@ export default function App() {
   if (chatAgent) {
     return (
       <div className="h-screen w-screen overflow-hidden">
-        <ChatView agentId={chatAgent} onBack={() => setChatAgent(null)} />
+        <ChatView
+          agentId={chatAgent}
+          initialConversationId={chatConversation}
+          onBack={() => {
+            setChatAgent(null);
+            setChatConversation(null);
+          }}
+        />
         {palette}
       </div>
     );

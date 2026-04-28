@@ -21,8 +21,10 @@ import {
 import { useAgentStore } from "@/store/agents";
 import {
   openNative,
+  searchChats,
   startManagedAgent,
   stopManagedAgent,
+  type ChatSearchHit,
 } from "@/lib/api";
 import type { Agent, AgentKind } from "@/types/agent";
 import { cn } from "@/lib/cn";
@@ -30,7 +32,7 @@ import { cn } from "@/lib/cn";
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
-  onOpenChat: (id: string) => void;
+  onOpenChat: (id: string, conversationId?: string | null) => void;
   onOpenDetail: (id: string) => void;
 }
 
@@ -65,12 +67,48 @@ export function CommandPalette({
   const agents = useMemo(() => Object.values(agentsMap), [agentsMap]);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  const [chatHits, setChatHits] = useState<ChatSearchHit[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const actions = useMemo(
     () => buildActions(agents, { onOpenChat, onOpenDetail }),
     [agents, onOpenChat, onOpenDetail],
+  );
+
+  // Debounced FTS over the local chat cache. Only fires for non-trivial
+  // queries — single-character searches just produce too much noise to
+  // be useful and would beat on the agent list ordering.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setChatHits([]);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      searchChats(q, 8)
+        .then((hits) => {
+          if (!cancelled) setChatHits(hits);
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            console.warn("[palette] chat search failed:", e);
+            setChatHits([]);
+          }
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [query]);
+
+  // Map FTS hits to palette actions so they share keyboard navigation,
+  // run handler, and accent-coloured rows with the rest of the palette.
+  const hitActions = useMemo(
+    () => buildHitActions(chatHits, agents, { onOpenChat }),
+    [chatHits, agents, onOpenChat],
   );
 
   const filtered = useMemo(() => {
@@ -84,8 +122,11 @@ export function CommandPalette({
       .map((a) => ({ a, score: scoreMatch(a.searchable, q) }))
       .filter((x) => x.score > 0);
     scored.sort((x, y) => y.score - x.score || y.a.weight - x.a.weight);
-    return scored.slice(0, 20).map((x) => x.a);
-  }, [actions, query]);
+    // Agent actions first (they're more "verb-like" and exact), then FTS
+    // hits — capped together at a sane size for keyboard nav.
+    const agentActions = scored.slice(0, 12).map((x) => x.a);
+    return [...agentActions, ...hitActions].slice(0, 20);
+  }, [actions, hitActions, query]);
 
   // Reset state when the palette opens.
   useEffect(() => {
@@ -366,6 +407,44 @@ function buildActions(agents: Agent[], opts: BuildOpts): PaletteAction[] {
     }
   }
   return out;
+}
+
+interface HitOpts {
+  onOpenChat: (id: string, conversationId?: string | null) => void;
+}
+
+/**
+ * Renders FTS hits as palette actions. Snippet comes back from SQLite
+ * already wrapped in `[...]` markers around match terms — we leave them
+ * in: they're tiny visual highlight cues even without rich formatting.
+ */
+function buildHitActions(
+  hits: ChatSearchHit[],
+  agents: Agent[],
+  opts: HitOpts,
+): PaletteAction[] {
+  const byId = new Map(agents.map((a) => [a.manifest.id, a]));
+  return hits.map((h) => {
+    const agent = byId.get(h.agent_id);
+    const accent = agent?.manifest.accent ?? "#7c5cff";
+    const agentName = agent?.manifest.name ?? h.agent_id;
+    const kind = (agent?.manifest.kind ?? "ai") as AgentKind;
+    const title = h.conversation_title?.trim() || "Untitled";
+    const role = h.role === "assistant" ? "AI" : "You";
+    return {
+      id: `hit:${h.message_id}`,
+      label: h.snippet,
+      hint: `${role} · ${title}`,
+      icon: MessageSquare,
+      agentId: h.agent_id,
+      agentName,
+      agentKind: kind,
+      accent,
+      weight: 75,
+      searchable: h.snippet.toLowerCase(),
+      run: () => opts.onOpenChat(h.agent_id, h.conversation_id),
+    };
+  });
 }
 
 /**

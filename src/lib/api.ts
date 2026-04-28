@@ -116,3 +116,20 @@ export interface AgentEvent {
 export function onAgentEvent(cb: (e: AgentEvent) => void): Promise<UnlistenFn> {
   return listen<AgentEvent>("agent-event", (e) => cb(e.payload));
 }
+
+export interface ChatSearchHit {
+  message_id: string;
+  conversation_id: string;
+  role: string;
+  snippet: string;
+  at: string;
+  agent_id: string;
+  conversation_title: string | null;
+}
+
+export function searchChats(
+  query: string,
+  limit = 20,
+): Promise<ChatSearchHit[]> {
+  return invoke<ChatSearchHit[]>("chat_search", { query, limit });
+}
