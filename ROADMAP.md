@@ -60,9 +60,15 @@ Goal: a real chat with an AI agent inside the hub.
 - [ ] **v0.2.1c** Image / audio attachments where `supports_attachments`
       allows — content blob stored on disk under the app data dir,
       referenced by id from `messages.content`.
-- [ ] **v0.2.1d** Reference AI agent — thin adapter over Cloud.ru /
-      OpenRouter (re-uses keys already configured in easySTT). Implements
-      `kind: "ai"` contract end-to-end. ~400 LoC, separate repo.
+- [x] **v0.2.1d** Reference AI agent (`examples/cloud-bridge`) —
+      Node.js implementation of the full Hub protocol that streams
+      OpenRouter chat completions over SSE. One file of HTTP/WS
+      plumbing plus a swappable provider per file under
+      `src/providers/`. Cloud.ru lane stubbed with the same generator
+      contract so adopters can wire their auth flow without touching
+      `server.js`. Manifest auto-publishes to the standard discovery
+      path; provider, default model, max tokens and temperature are
+      live-editable through the hub's Settings tab via JSON-Schema.
 
 End state (after full v0.2.1): open hub → click AI agent → start a chat →
 tokens stream in, history survives restarts even if the agent is gone.

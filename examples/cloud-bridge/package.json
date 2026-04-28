@@ -1,0 +1,17 @@
+{
+  "name": "@agent-hub/cloud-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Reference AI agent for Agent Hub — thin streaming bridge to OpenRouter (and optionally Cloud.ru).",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
