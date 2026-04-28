@@ -17,6 +17,7 @@ mod supervisor;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 use crate::agents::Registry;
 use crate::supervisor::Supervisor;
@@ -35,6 +36,11 @@ fn focus_main(app: &tauri::AppHandle) {
 }
 
 pub fn run() {
+    let show_hub_shortcut =
+        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyH);
+    let shortcut_for_handler = show_hub_shortcut;
+    let shortcut_for_setup = show_hub_shortcut;
+
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
@@ -42,7 +48,24 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .setup(|app| {
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, shortcut, event| {
+                    if shortcut == &shortcut_for_handler
+                        && event.state() == ShortcutState::Pressed
+                    {
+                        focus_main(app);
+                    }
+                })
+                .build(),
+        )
+        .setup(move |app| {
+            // Best-effort: registration can fail if another app already owns
+            // the combo. We log and keep going so the rest of the hub still
+            // boots.
+            if let Err(e) = app.global_shortcut().register(shortcut_for_setup) {
+                eprintln!("[hotkey] failed to register Ctrl+Shift+H: {e}");
+            }
             let registry = Registry::new();
             app.manage(registry.clone());
 

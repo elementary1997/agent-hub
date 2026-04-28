@@ -15,6 +15,7 @@
     "store:allow-set",
     "store:allow-get",
     "store:allow-save",
-    "shell:default"
+    "shell:default",
+    "global-shortcut:default"
   ]
 }

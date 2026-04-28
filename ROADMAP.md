@@ -116,11 +116,22 @@ Goal: feels modern.
 - [x] Versioning unified: package.json, Cargo.toml, tauri.conf.json all on
       0.4.0. The `.deb` / `.exe` filenames now bump on every release.
 
-### v0.4.1 — Theme + global hotkeys (next)
+### v0.4.1 — Global hotkeys (shipped)
 
-- [ ] Theme switcher (dark / light), persistent in `tauri-plugin-store`
-- [ ] Global hotkeys: "open hub", "new chat with last-used AI"
-      via `tauri-plugin-global-shortcut`
+- [x] Global hotkey "Show hub" — `Ctrl+Shift+H` brings the main window from
+      anywhere via `tauri-plugin-global-shortcut`. Best-effort registration:
+      logs and continues if the combo is owned by another app, so the rest
+      of the hub still boots.
+- [x] Sidebar footer renders the hotkey hint so users discover it without
+      hunting through settings.
+
+### v0.4.2 — Theme switcher (next)
+
+- [ ] Theme switcher (dark / light), persistent in `tauri-plugin-store`.
+      Requires re-tokenising the existing palette through CSS variables so
+      Tailwind can swap both colour systems off a single `data-theme` flag.
+- [ ] User-configurable hotkey for "Show hub" + a second binding for
+      "New chat with last-used AI".
 
 End state: feels fast and pretty without breaking.
 

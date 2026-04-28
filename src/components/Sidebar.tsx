@@ -131,7 +131,13 @@ export function Sidebar({
         )}
       </nav>
 
-      <div className="p-3 border-t border-border-subtle">
+      <div className="p-3 border-t border-border-subtle space-y-2">
+        <div className="flex items-center justify-between px-2.5 text-[11px] text-muted">
+          <span>Show hub</span>
+          <kbd className="px-1.5 py-0.5 rounded border border-border-default font-mono text-[10px]">
+            Ctrl+Shift+H
+          </kbd>
+        </div>
         <button
           type="button"
           className={cn(

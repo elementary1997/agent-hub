@@ -1,6 +1,6 @@
 [package]
 name = "agent-hub"
-version = "0.4.0"
+version = "0.4.1"
 description = "Local-first dashboard and supervisor for personal mini-agents"
 authors = []
 license = "MIT"
@@ -19,6 +19,7 @@ tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-store = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
