@@ -68,17 +68,28 @@ Goal: hybrid lifecycle works; agents can be configured from the hub.
 - [x] Card buttons wired: Stop sends supervisor.stop() (POST /quit then
       kill on grace timeout); Start spawns the manifest's executable
 
-### v0.3.1 — Settings + auto-start (next)
+### v0.3.1 — Detail page (shipped)
 
-- [ ] JSON-Schema-driven settings form generator
-      (`@rjsf/core` or hand-rolled with shadcn primitives) backed by
-      `GET /config` / `PUT /config`
+- [x] `<AgentDetail/>` page reachable from each card's Settings button
+      (Activity / Logs / Config tabs, header with status, version, endpoint,
+      contextual actions: Chat for AI · Open native · Start · Stop)
+- [x] JSON-Schema-driven settings form generator (`<SchemaForm/>`) backed by
+      `agent_get_config` / `agent_put_config` Tauri commands. Handles
+      string / number / boolean / enum out of the box, falls back to a raw
+      JSON editor when the schema is missing or too exotic.
+- [x] Live log viewer with stream-coloured lines (stdout / stderr /
+      supervisor) consuming the existing `agent-log` Tauri stream.
+- [x] Activity feed reads the per-agent rolling event buffer populated by
+      the v0.1.2 WebSocket client.
+
+### v0.3.2 — Auto-start (next)
+
 - [ ] Per-agent toggle "auto-start with hub" — honours
-      `auto_start_on_hub_launch` from the manifest
-- [ ] Log viewer panel inside the agent detail page (consumes the
-      existing `agent-log` Tauri stream)
+      `auto_start_on_hub_launch` from the manifest, persists user override
+      via `tauri-plugin-store`
+- [ ] Tray icon with quick actions (status, new chat, quit)
 
-End state (after v0.3.1): all four lifecycle/configure paths work end-to-end.
+End state (after v0.3.2): all four lifecycle/configure paths work end-to-end.
 
 ## v0.4 — UX polish (target: 1 week)
 

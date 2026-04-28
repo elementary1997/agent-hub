@@ -36,6 +36,42 @@ export function fetchAgentLogs(id: string): Promise<AgentLogLine[]> {
   return invoke<AgentLogLine[]>("agent_logs", { id });
 }
 
+export interface AgentConfigResponse {
+  config: Record<string, unknown>;
+  schema?: AgentConfigSchema;
+}
+
+export interface AgentConfigSchema {
+  type?: string;
+  properties?: Record<string, AgentConfigProperty>;
+  required?: string[];
+  title?: string;
+  description?: string;
+}
+
+export interface AgentConfigProperty {
+  type?: string;
+  title?: string;
+  description?: string;
+  enum?: (string | number)[];
+  default?: unknown;
+  minimum?: number;
+  maximum?: number;
+  maxLength?: number;
+  format?: string;
+}
+
+export function getAgentConfig(id: string): Promise<AgentConfigResponse> {
+  return invoke<AgentConfigResponse>("agent_get_config", { id });
+}
+
+export function putAgentConfig(
+  id: string,
+  config: Record<string, unknown>,
+): Promise<AgentConfigResponse> {
+  return invoke<AgentConfigResponse>("agent_put_config", { id, config });
+}
+
 export interface AgentLogEvent {
   agentId: string;
   line: AgentLogLine;

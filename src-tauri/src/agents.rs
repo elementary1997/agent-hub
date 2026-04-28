@@ -718,3 +718,61 @@ pub fn agents_dir() -> Result<String, String> {
         .map(|p| p.to_string_lossy().into_owned())
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn agent_get_config(
+    id: String,
+    registry: tauri::State<'_, Arc<Registry>>,
+) -> Result<serde_json::Value, String> {
+    let endpoint = registry
+        .endpoint_of(&id)
+        .await
+        .ok_or_else(|| format!("unknown agent {id}"))?;
+    let url = format!("{}/config", endpoint.trim_end_matches('/'));
+    let resp = registry
+        .http
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "{}: {}",
+            resp.status(),
+            resp.text().await.unwrap_or_default()
+        ));
+    }
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn agent_put_config(
+    id: String,
+    config: serde_json::Value,
+    registry: tauri::State<'_, Arc<Registry>>,
+) -> Result<serde_json::Value, String> {
+    let endpoint = registry
+        .endpoint_of(&id)
+        .await
+        .ok_or_else(|| format!("unknown agent {id}"))?;
+    let url = format!("{}/config", endpoint.trim_end_matches('/'));
+    let resp = registry
+        .http
+        .put(url)
+        .json(&config)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "{}: {}",
+            resp.status(),
+            resp.text().await.unwrap_or_default()
+        ));
+    }
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}

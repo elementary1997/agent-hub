@@ -51,6 +51,8 @@ pub fn run() {
             agents::agent_open_native,
             agents::agent_quit,
             agents::agents_dir,
+            agents::agent_get_config,
+            agents::agent_put_config,
             chat::chat_list_conversations,
             chat::chat_create_conversation,
             chat::chat_get_conversation,

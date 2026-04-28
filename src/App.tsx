@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { AgentCard } from "@/components/AgentCard";
+import { AgentDetail } from "@/components/AgentDetail";
 import { ChatView } from "@/components/ChatView";
 import { Sidebar, type SidebarFilter } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
@@ -47,6 +48,7 @@ export default function App() {
 
   const [filter, setFilter] = useState<SidebarFilter>("all");
   const [chatAgent, setChatAgent] = useState<string | null>(null);
+  const [detailAgent, setDetailAgent] = useState<string | null>(null);
 
   useEffect(() => {
     let unlistenUp: (() => void) | null = null;
@@ -136,6 +138,21 @@ export default function App() {
     );
   }
 
+  if (detailAgent) {
+    return (
+      <div className="h-screen w-screen overflow-hidden">
+        <AgentDetail
+          agentId={detailAgent}
+          onBack={() => setDetailAgent(null)}
+          onOpenChat={(id) => {
+            setDetailAgent(null);
+            setChatAgent(id);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar filter={filter} onFilterChange={setFilter} counts={counts} />
@@ -171,7 +188,7 @@ export default function App() {
                     key={agent.manifest.id}
                     agent={agent}
                     onOpenNative={handleOpenPrimary}
-                    onOpenSettings={(id) => console.log("settings UI lands in v0.4 →", id)}
+                    onOpenSettings={(id) => setDetailAgent(id)}
                     onToggleRun={handleToggleRun}
                   />
                 ))}
