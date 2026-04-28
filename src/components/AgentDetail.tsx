@@ -175,6 +175,8 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
     () => (config?.config as Record<string, unknown> | undefined) ?? {},
     [config],
   );
+  const configUnsupported =
+    !!configError && /\b404\b|not found/i.test(configError);
 
   if (!agent) {
     return (
@@ -297,14 +299,21 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
                 Agent config
               </div>
               {configError ? (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-300">
-                  <div className="font-medium mb-1">Failed to load config</div>
-                  <div className="text-xs break-words opacity-80">{configError}</div>
-                  <p className="text-xs text-muted mt-2">
-                    Agents can opt out of <code>GET /config</code> if they have nothing to
-                    expose — in that case there's nothing to do here.
-                  </p>
-                </div>
+                configUnsupported ? (
+                  <div className="rounded-lg border border-border-subtle bg-bg-card/40 p-4 text-sm text-slate-200">
+                    <div className="font-medium mb-1">This agent has no config endpoint</div>
+                    <p className="text-xs text-muted">
+                      The agent does not implement <code>GET /config</code> yet (common for
+                      older integrations like current easySTT). Use the agent's native settings
+                      UI instead.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-sm text-red-300">
+                    <div className="font-medium mb-1">Failed to load config</div>
+                    <div className="text-xs break-words opacity-80">{configError}</div>
+                  </div>
+                )
               ) : config ? (
                 <SchemaForm
                   schema={config.schema}

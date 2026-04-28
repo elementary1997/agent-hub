@@ -90,7 +90,7 @@
   .status-dot--busy    { @apply bg-warn animate-pulse-slow; }
   .status-dot--idle    { @apply bg-muted; }
   .status-dot--error   { @apply bg-danger; }
-  .status-dot--offline { @apply bg-border-strong; }
+  .status-dot--offline { @apply bg-danger; }
 
   .md > * + * { @apply mt-2.5; }
   .md h1, .md h2, .md h3 { @apply font-semibold text-slate-100 mt-4 mb-1; }

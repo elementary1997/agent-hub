@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import {
   Bot,
   ExternalLink,
+  Globe,
   MessageSquare,
   Mic,
   Play,
@@ -9,21 +10,13 @@ import {
   Square,
   Wrench,
 } from "lucide-react";
-import type { Agent, AgentKind, AgentStatus } from "@/types/agent";
+import type { Agent, AgentKind } from "@/types/agent";
 import { cn } from "@/lib/cn";
 
 const KIND_ICON: Record<AgentKind, typeof Bot> = {
   ai: Bot,
   utility: Wrench,
   service: Mic,
-};
-
-const STATUS_LABEL: Record<AgentStatus, string> = {
-  running: "Running",
-  busy: "Busy",
-  idle: "Idle",
-  error: "Error",
-  offline: "Offline",
 };
 
 function formatRelative(iso: string | null): string {
@@ -92,7 +85,7 @@ export function AgentCard({ agent, onOpenNative, onOpenSettings, onToggleRun }: 
               color: accent,
             }}
           >
-            <Icon size={18} strokeWidth={1.75} />
+            <AgentAvatar manifest={manifest} fallback={Icon} />
           </div>
           <div className="min-w-0">
             <div className="font-semibold leading-tight truncate">{manifest.name}</div>
@@ -108,8 +101,8 @@ export function AgentCard({ agent, onOpenNative, onOpenSettings, onToggleRun }: 
           )}
           title={`Lifecycle: ${manifest.lifecycle}`}
         >
-          <span className={cn("status-dot", `status-dot--${runtime.status}`)} />
-          {STATUS_LABEL[runtime.status]}
+          <span className={cn("status-dot", isRunning ? "status-dot--running" : "status-dot--offline")} />
+          {isRunning ? "Running" : "Offline"}
         </span>
       </div>
 
@@ -171,6 +164,34 @@ export function AgentCard({ agent, onOpenNative, onOpenSettings, onToggleRun }: 
       </div>
     </motion.div>
   );
+}
+
+function AgentAvatar({
+  manifest,
+  fallback: Fallback,
+}: {
+  manifest: Agent["manifest"];
+  fallback: typeof Bot;
+}) {
+  const icon = (manifest.icon ?? "").trim();
+  if (icon) {
+    return (
+      <img
+        src={icon}
+        alt={`${manifest.name} icon`}
+        className="w-5 h-5 rounded object-cover"
+        onError={(e) => {
+          // Broken icon URLs should not break card rendering.
+          e.currentTarget.style.display = "none";
+        }}
+      />
+    );
+  }
+
+  // Built-in avatars for known agents until all manifests provide icons.
+  if (manifest.id === "easystt") return <Mic size={18} strokeWidth={1.75} />;
+  if (manifest.id === "openrouter-agent") return <Globe size={18} strokeWidth={1.75} />;
+  return <Fallback size={18} strokeWidth={1.75} />;
 }
 
 function Metric({ label, value, mono }: { label: string; value: string; mono?: boolean }) {

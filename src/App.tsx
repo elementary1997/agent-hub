@@ -232,6 +232,10 @@ export default function App() {
         <SettingsView
           theme={theme}
           onThemeChange={setTheme}
+          onOpenAgentSettings={(id) => {
+            setSettingsOpen(false);
+            setDetailAgent(id);
+          }}
           onBack={() => setSettingsOpen(false)}
         />
         {palette}

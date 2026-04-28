@@ -173,6 +173,21 @@ End state: feels fast and pretty without breaking.
 - [x] UI naming switched to **OpenRouter Agent** (instead of cloud-bridge)
       for the installed managed AI card.
 
+### v0.4.7 — Marketplace + visual status polish (shipped)
+
+- [x] Settings now includes a dedicated **Agent Marketplace** section with
+      cards (easySTT + OpenRouter Agent), install actions, and an
+      "Installed" banner. Installed cards expose a direct "Agent settings"
+      jump into the existing detail/config page.
+- [x] Agent cards now show agent-specific avatars (manifest icon when
+      provided, known fallbacks for easySTT/OpenRouter Agent), and runtime
+      status is simplified for the grid UX: green when running/busy, red
+      when offline/not running.
+- [x] Config UX for non-configurable agents improved: `404 /config` is
+      treated as a neutral "this agent has no config endpoint yet" state
+      instead of a scary red error.
+- [x] App icon set regenerated (bundle + tray) from a new Hub mark.
+
 ## v1.0 — Polish & release (target: 1 week)
 
 Goal: shippable, signed, auto-updating.

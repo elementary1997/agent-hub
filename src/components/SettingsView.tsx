@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   Database,
+  Download,
   FileText,
   FolderOpen,
   Github,
@@ -31,6 +32,7 @@ interface SettingsViewProps {
   onBack: () => void;
   theme: "dark" | "light";
   onThemeChange: (next: "dark" | "light") => void;
+  onOpenAgentSettings?: (id: string) => void;
 }
 
 interface AutoStartRow {
@@ -49,7 +51,12 @@ const HOTKEYS: { combo: string; what: string; note?: string }[] = [
   { combo: "Esc", what: "Close palette / dialog" },
 ];
 
-export function SettingsView({ onBack, theme, onThemeChange }: SettingsViewProps) {
+export function SettingsView({
+  onBack,
+  theme,
+  onThemeChange,
+  onOpenAgentSettings,
+}: SettingsViewProps) {
   const agentsMap = useAgentStore((s) => s.agents);
   const manifestDir = useAgentStore((s) => s.manifestDir);
   const openRouterAgent = agentsMap["openrouter-agent"];
@@ -158,6 +165,34 @@ export function SettingsView({ onBack, theme, onThemeChange }: SettingsViewProps
     }
   };
 
+  const marketplace = useMemo(
+    () => [
+      {
+        id: "easystt",
+        name: "easySTT",
+        kind: "Utility",
+        description: "Push-to-talk speech-to-text with text injection.",
+        accent: "#4f8cff",
+        installed: !!agentsMap["easystt"],
+        installLabel: "Open download page",
+        installAction: () => {
+          window.open("https://github.com/elementary1997/easySTT/releases", "_blank");
+        },
+      },
+      {
+        id: "openrouter-agent",
+        name: "OpenRouter Agent",
+        kind: "AI",
+        description: "Chat with Claude / GPT / Gemini through OpenRouter.",
+        accent: "#5b8def",
+        installed: !!openRouterAgent,
+        installLabel: openRouterAgent ? "Repair / Reinstall" : "Install",
+        installAction: onInstallOpenRouter,
+      },
+    ],
+    [agentsMap, openRouterAgent],
+  );
+
   return (
     <div className="h-full w-full overflow-auto bg-bg-base text-slate-200">
       <header className="sticky top-0 z-10 backdrop-blur bg-bg-base/80 border-b border-border-subtle">
@@ -241,6 +276,57 @@ export function SettingsView({ onBack, theme, onThemeChange }: SettingsViewProps
           </div>
           <div className="text-[11px] text-muted">
             Theme is persisted locally and applied on next app launch.
+          </div>
+        </Section>
+
+        <Section icon={Sparkles} title="Agent Marketplace">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {marketplace.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-xl border border-border-subtle bg-bg-card/50 p-3 space-y-3"
+              >
+                <div className="flex items-start gap-2">
+                  <div
+                    className="w-8 h-8 rounded-lg grid place-items-center text-white text-xs font-semibold"
+                    style={{ background: `linear-gradient(135deg, ${item.accent}, ${item.accent}99)` }}
+                  >
+                    {item.kind === "AI" ? "AI" : "STT"}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <div className="font-medium truncate">{item.name}</div>
+                      {item.installed && (
+                        <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-emerald-500/50 text-emerald-300 bg-emerald-500/10">
+                          Installed
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-muted">{item.description}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={item.installAction}
+                    className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
+                  >
+                    <Download size={12} />
+                    {item.installLabel}
+                  </button>
+                  {item.installed && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAgentSettings?.(item.id)}
+                      className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors"
+                    >
+                      <Hash size={12} />
+                      Agent settings
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </Section>
 
