@@ -8,21 +8,29 @@ import {
   Github,
   Hash,
   Keyboard,
+  Moon,
   Power,
   RefreshCw,
+  Sparkles,
+  Sun,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useAgentStore } from "@/store/agents";
 import {
   getAutoStart,
   getChatDbStats,
+  installOpenRouterAgent,
+  isManagedRunning,
   setAutoStart,
+  startManagedAgent,
   type AutoStartView,
   type ChatDbStats,
 } from "@/lib/api";
 
 interface SettingsViewProps {
   onBack: () => void;
+  theme: "dark" | "light";
+  onThemeChange: (next: "dark" | "light") => void;
 }
 
 interface AutoStartRow {
@@ -41,15 +49,19 @@ const HOTKEYS: { combo: string; what: string; note?: string }[] = [
   { combo: "Esc", what: "Close palette / dialog" },
 ];
 
-export function SettingsView({ onBack }: SettingsViewProps) {
+export function SettingsView({ onBack, theme, onThemeChange }: SettingsViewProps) {
   const agentsMap = useAgentStore((s) => s.agents);
   const manifestDir = useAgentStore((s) => s.manifestDir);
+  const openRouterAgent = agentsMap["openrouter-agent"];
 
   const [stats, setStats] = useState<ChatDbStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState<string | null>(null);
   const [autoStartRows, setAutoStartRows] = useState<AutoStartRow[]>([]);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
+  const [installingOpenRouter, setInstallingOpenRouter] = useState(false);
+  const [openRouterInstallMsg, setOpenRouterInstallMsg] = useState<string | null>(null);
+  const [openRouterRunning, setOpenRouterRunning] = useState(false);
 
   const agents = useMemo(() => Object.values(agentsMap), [agentsMap]);
 
@@ -61,6 +73,16 @@ export function SettingsView({ onBack }: SettingsViewProps) {
       .catch((e) => setStatsError(String(e)))
       .finally(() => setStatsLoading(false));
   };
+
+  useEffect(() => {
+    if (!openRouterAgent) {
+      setOpenRouterRunning(false);
+      return;
+    }
+    isManagedRunning("openrouter-agent")
+      .then((v) => setOpenRouterRunning(v))
+      .catch(() => setOpenRouterRunning(false));
+  }, [openRouterAgent]);
 
   useEffect(() => {
     refreshStats();
@@ -108,6 +130,31 @@ export function SettingsView({ onBack }: SettingsViewProps) {
       );
     } catch (e) {
       console.error("[settings] auto-start toggle failed:", e);
+    }
+  };
+
+  const onInstallOpenRouter = async () => {
+    setInstallingOpenRouter(true);
+    setOpenRouterInstallMsg(null);
+    try {
+      const out = await installOpenRouterAgent();
+      setOpenRouterInstallMsg(
+        `Installed to ${out.projectDir}. Manifest: ${out.manifestPath}`,
+      );
+    } catch (e) {
+      setOpenRouterInstallMsg(`Install failed: ${String(e)}`);
+    } finally {
+      setInstallingOpenRouter(false);
+    }
+  };
+
+  const onStartOpenRouter = async () => {
+    try {
+      await startManagedAgent("openrouter-agent");
+      setOpenRouterRunning(true);
+      setOpenRouterInstallMsg("OpenRouter Agent started.");
+    } catch (e) {
+      setOpenRouterInstallMsg(`Start failed: ${String(e)}`);
     }
   };
 
@@ -161,6 +208,86 @@ export function SettingsView({ onBack }: SettingsViewProps) {
             best-effort: if another app already owns the combo, the rest of
             the hub still boots.
           </div>
+        </Section>
+
+        <Section icon={theme === "dark" ? Moon : Sun} title="Theme">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onThemeChange("dark")}
+              className={cn(
+                "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
+                theme === "dark"
+                  ? "border-border-default bg-bg-elev text-slate-100"
+                  : "border-border-subtle text-muted hover:text-slate-200",
+              )}
+            >
+              <Moon size={13} />
+              Dark
+            </button>
+            <button
+              type="button"
+              onClick={() => onThemeChange("light")}
+              className={cn(
+                "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
+                theme === "light"
+                  ? "border-border-default bg-bg-elev text-slate-100"
+                  : "border-border-subtle text-muted hover:text-slate-200",
+              )}
+            >
+              <Sun size={13} />
+              Light
+            </button>
+          </div>
+          <div className="text-[11px] text-muted">
+            Theme is persisted locally and applied on next app launch.
+          </div>
+        </Section>
+
+        <Section icon={Sparkles} title="OpenRouter Agent">
+          <p className="text-xs text-muted">
+            Install and run a built-in managed AI agent (OpenRouter-backed)
+            directly from Agent Hub — no manual `npm start`.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onInstallOpenRouter}
+              disabled={installingOpenRouter}
+              className={cn(
+                "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
+                installingOpenRouter && "opacity-60 cursor-not-allowed",
+              )}
+            >
+              <RefreshCw size={12} className={installingOpenRouter ? "animate-spin" : ""} />
+              {openRouterAgent ? "Repair / Reinstall" : "Install OpenRouter Agent"}
+            </button>
+            <button
+              type="button"
+              onClick={onStartOpenRouter}
+              disabled={!openRouterAgent}
+              className={cn(
+                "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
+                !openRouterAgent && "opacity-60 cursor-not-allowed",
+              )}
+            >
+              <Power size={12} />
+              {openRouterRunning ? "Running" : "Start"}
+            </button>
+          </div>
+          <div className="text-[11px] text-muted">
+            Status:{" "}
+            {openRouterAgent
+              ? openRouterRunning
+                ? "installed and running"
+                : "installed (stopped)"
+              : "not installed"}
+          </div>
+          {openRouterInstallMsg && (
+            <div className="text-[11px] text-muted break-all">{openRouterInstallMsg}</div>
+          )}
         </Section>
 
         <Section icon={FolderOpen} title="Storage">

@@ -147,9 +147,10 @@ Goal: feels modern.
 
 ### v0.4.2 — Theme switcher + custom hotkeys (next)
 
-- [ ] Theme switcher (dark / light), persistent in `tauri-plugin-store`.
-      Requires re-tokenising the existing palette through CSS variables so
-      Tailwind can swap both colour systems off a single `data-theme` flag.
+- [x] Theme switcher (dark / light), persisted locally (`hub.theme`) and
+      applied via `data-theme` + CSS token palette (`--bg-*`, `--border-*`,
+      `--accent-*`) so the existing Tailwind utility classes reuse the same
+      semantic colors in both themes.
 - [ ] User-configurable hotkey for "Show hub" + a second binding for
       "New chat with last-used AI".
 
@@ -162,6 +163,15 @@ End state: feels fast and pretty without breaking.
       Storage (manifest dir, chat.db path + size + counts via new
       `chat_db_stats` Tauri command, refresh button), Auto-start matrix
       with per-agent toggles, Chat history explainer, About + repo link.
+
+### v0.4.6 — OpenRouter agent installer (shipped)
+
+- [x] Built-in "Install OpenRouter Agent" action in Settings. Writes a
+      managed manifest (`openrouter-agent`) and local Node project into
+      the app data directory, runs `npm install`, then allows starting the
+      agent from the same screen.
+- [x] UI naming switched to **OpenRouter Agent** (instead of cloud-bridge)
+      for the installed managed AI card.
 
 ## v1.0 — Polish & release (target: 1 week)
 

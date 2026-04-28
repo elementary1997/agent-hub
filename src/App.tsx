@@ -58,6 +58,11 @@ export default function App() {
   const [detailAgent, setDetailAgent] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const saved = localStorage.getItem("hub.theme");
+    if (saved === "light" || saved === "dark") return saved;
+    return "dark";
+  });
 
   // ⌘K / Ctrl+K opens the command palette from anywhere.
   useEffect(() => {
@@ -70,6 +75,11 @@ export default function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("hub.theme", theme);
+  }, [theme]);
 
   const handleOpenChat = (id: string, conversationId?: string | null) => {
     setDetailAgent(null);
@@ -219,7 +229,11 @@ export default function App() {
   if (settingsOpen) {
     return (
       <div className="h-screen w-screen overflow-hidden">
-        <SettingsView onBack={() => setSettingsOpen(false)} />
+        <SettingsView
+          theme={theme}
+          onThemeChange={setTheme}
+          onBack={() => setSettingsOpen(false)}
+        />
         {palette}
       </div>
     );

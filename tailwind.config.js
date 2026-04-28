@@ -7,25 +7,25 @@ export default {
       colors: {
         // Inspired by easySTT's gradient palette — feels at home next to it.
         bg: {
-          base: "#0c0e16",
-          surface: "#13162200",
-          card: "#161a2a",
-          elev: "#1c2138",
+          base: "var(--bg-base)",
+          surface: "var(--bg-surface)",
+          card: "var(--bg-card)",
+          elev: "var(--bg-elev)",
         },
         border: {
-          subtle: "#252a40",
-          default: "#2f3553",
-          strong: "#3d4570",
+          subtle: "var(--border-subtle)",
+          default: "var(--border-default)",
+          strong: "var(--border-strong)",
         },
         accent: {
-          DEFAULT: "#7c5cff",
-          hover: "#8d70ff",
-          muted: "#7c5cff33",
+          DEFAULT: "var(--accent)",
+          hover: "var(--accent-hover)",
+          muted: "var(--accent-muted)",
         },
-        success: "#3ddc97",
-        warn: "#ffb547",
-        danger: "#ff5d6c",
-        muted: "#8088a8",
+        success: "var(--success)",
+        warn: "var(--warn)",
+        danger: "var(--danger)",
+        muted: "var(--muted)",
       },
       fontFamily: {
         sans: [

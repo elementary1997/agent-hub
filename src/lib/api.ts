@@ -145,3 +145,13 @@ export interface ChatDbStats {
 export function getChatDbStats(): Promise<ChatDbStats | null> {
   return invoke<ChatDbStats | null>("chat_db_stats");
 }
+
+export interface InstallOpenRouterResult {
+  projectDir: string;
+  manifestPath: string;
+  installed: boolean;
+}
+
+export function installOpenRouterAgent(): Promise<InstallOpenRouterResult> {
+  return invoke<InstallOpenRouterResult>("install_openrouter_agent");
+}

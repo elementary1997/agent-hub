@@ -1,0 +1,170 @@
+use std::path::PathBuf;
+use std::time::Duration;
+
+use anyhow::{anyhow, Context, Result};
+use serde::Serialize;
+use tauri::AppHandle;
+use tauri::Manager;
+
+const AGENT_ID: &str = "openrouter-agent";
+const AGENT_PORT: u16 = 8762;
+const AGENT_VERSION: &str = "0.1.0";
+
+const PACKAGE_JSON: &str = r#"{
+  "name": "@agent-hub/openrouter-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenRouter AI agent for Agent Hub",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
+"#;
+
+// Minimal standalone OpenRouter agent with protocol v0.1.
+const SERVER_JS: &str = include_str!("../../examples/cloud-bridge/src/server.js");
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallOpenRouterResult {
+    pub project_dir: String,
+    pub manifest_path: String,
+    pub installed: bool,
+}
+
+#[tauri::command]
+pub async fn install_openrouter_agent(app: AppHandle) -> Result<InstallOpenRouterResult, String> {
+    install_openrouter_agent_inner(&app)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn install_openrouter_agent_inner(app: &AppHandle) -> Result<InstallOpenRouterResult> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .context("resolve app_data_dir")?;
+    let project_dir = app_data.join("openrouter-agent");
+    std::fs::create_dir_all(&project_dir).context("create openrouter-agent dir")?;
+
+    let server_js = patch_server_js(SERVER_JS);
+    std::fs::write(project_dir.join("package.json"), PACKAGE_JSON)
+        .context("write package.json")?;
+    std::fs::write(project_dir.join("server.js"), server_js).context("write server.js")?;
+
+    ensure_node_available().await?;
+    npm_install(&project_dir).await?;
+
+    let manifest_dir = manifest_dir()?;
+    std::fs::create_dir_all(&manifest_dir).context("create manifest dir")?;
+    let manifest_path = manifest_dir.join(format!("{AGENT_ID}.json"));
+    std::fs::write(&manifest_path, build_manifest(&project_dir)?).context("write manifest")?;
+
+    Ok(InstallOpenRouterResult {
+        project_dir: project_dir.display().to_string(),
+        manifest_path: manifest_path.display().to_string(),
+        installed: true,
+    })
+}
+
+fn patch_server_js(src: &str) -> String {
+    src.replace("const AGENT_ID = \"cloud-bridge\";", "const AGENT_ID = \"openrouter-agent\";")
+        .replace("const PORT = portFromArgs() ?? Number(process.env.CLOUD_BRIDGE_PORT) ?? 8742;", &format!("const PORT = portFromArgs() ?? Number(process.env.CLOUD_BRIDGE_PORT) ?? {AGENT_PORT};"))
+        .replace("const VERSION = \"0.1.0\";", &format!("const VERSION = \"{AGENT_VERSION}\";"))
+        .replace("name: \"Cloud Bridge\",", "name: \"OpenRouter Agent\",")
+        .replace("tagline: \"Streams Claude / GPT / Gemini through OpenRouter\",", "tagline: \"Chat with Claude/GPT/Gemini via OpenRouter\",")
+        .replace("tags: [\"ai\", \"reference\", \"openrouter\"],", "tags: [\"ai\", \"openrouter\"],")
+        .replace("auto_start_on_hub_launch: true,", "auto_start_on_hub_launch: false,")
+}
+
+async fn ensure_node_available() -> Result<()> {
+    let out = tokio::process::Command::new("node")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await
+        .context("spawn `node --version`")?;
+    if !out.success() {
+        return Err(anyhow!(
+            "Node.js is required for OpenRouter Agent. Install Node 20+ first."
+        ));
+    }
+    Ok(())
+}
+
+async fn npm_install(project_dir: &PathBuf) -> Result<()> {
+    let mut child = tokio::process::Command::new("npm")
+        .args(["install", "--no-audit", "--no-fund", "--omit=dev"])
+        .current_dir(project_dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("spawn npm install")?;
+
+    let timeout = tokio::time::sleep(Duration::from_secs(120));
+    tokio::pin!(timeout);
+
+    tokio::select! {
+        _ = &mut timeout => {
+            let _ = child.kill().await;
+            Err(anyhow!("npm install timed out (120s). Check network and run install again."))
+        }
+        status = child.wait() => {
+            let status = status.context("wait npm install")?;
+            if !status.success() {
+                return Err(anyhow!("npm install failed with status {status}"));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn manifest_dir() -> Result<PathBuf> {
+    let base = dirs::config_dir().ok_or_else(|| anyhow!("cannot resolve config dir"))?;
+    Ok(base.join("agent-hub").join("agents"))
+}
+
+fn build_manifest(project_dir: &PathBuf) -> Result<String> {
+    let server = project_dir.join("server.js");
+    let payload = serde_json::json!({
+        "id": AGENT_ID,
+        "name": "OpenRouter Agent",
+        "version": AGENT_VERSION,
+        "kind": "ai",
+        "endpoint": format!("http://127.0.0.1:{AGENT_PORT}"),
+        "lifecycle": "managed",
+        "executable": "node",
+        "args": [server.display().to_string(), "--port", AGENT_PORT.to_string()],
+        "tagline": "Chat with Claude/GPT/Gemini via OpenRouter",
+        "tags": ["ai", "openrouter"],
+        "accent": "#5b8def",
+        "protocol": "0.1",
+        "auto_start_on_hub_launch": false,
+        "ai": {
+            "supports_streaming": true,
+            "supports_tools": false,
+            "supports_attachments": false,
+            "models": [
+                "anthropic/claude-sonnet-4.5",
+                "anthropic/claude-3.5-sonnet",
+                "openai/gpt-4o-mini",
+                "openai/gpt-4o",
+                "google/gemini-2.5-pro",
+                "deepseek/deepseek-chat",
+                "meta-llama/llama-3.3-70b-instruct"
+            ],
+            "default_model": "anthropic/claude-sonnet-4.5",
+            "system_prompt_editable": true
+        }
+    });
+    serde_json::to_string_pretty(&payload).context("serialize manifest")
+}

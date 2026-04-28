@@ -12,6 +12,7 @@
 mod agents;
 mod chat;
 mod chatdb;
+mod openrouter_agent;
 mod prefs;
 mod supervisor;
 
@@ -154,6 +155,7 @@ pub fn run() {
             supervisor::agent_is_managed_running,
             prefs::agent_get_auto_start,
             prefs::agent_set_auto_start,
+            openrouter_agent::install_openrouter_agent,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agent Hub");
