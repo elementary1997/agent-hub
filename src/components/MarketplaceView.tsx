@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
 import { useAgentStore } from "@/store/agents";
 import {
+  easysttInstalled,
   installCloudRuAgent,
   installEasysttLatest,
   installOpenRouterAgent,
@@ -38,6 +39,16 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
 
   const [installingEasystt, setInstallingEasystt] = useState(false);
   const [easysttMsg, setEasysttMsg] = useState<string | null>(null);
+  const [easysttDetected, setEasysttDetected] = useState(false);
+
+  const easysttManifest = !!agentsMap["easystt"];
+  const easysttOk = easysttManifest || easysttDetected;
+
+  useEffect(() => {
+    easysttInstalled()
+      .then((v) => setEasysttDetected(v))
+      .catch(() => setEasysttDetected(false));
+  }, []);
 
   useEffect(() => {
     if (!openRouterAgent) {
@@ -111,6 +122,7 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
     try {
       const out = await installEasysttLatest();
       setEasysttMsg(`${out.assetName} → ${out.downloadedPath}`);
+      void easysttInstalled().then(setEasysttDetected);
     } catch (e) {
       setEasysttMsg(String(e));
     } finally {
@@ -133,7 +145,14 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
                 {t("marketplace.kind.utility")}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="font-medium truncate">easySTT</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="font-medium truncate">easySTT</div>
+                  {easysttOk && (
+                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border border-emerald-500/50 text-emerald-300 bg-emerald-500/10">
+                      {t("marketplace.badge")}
+                    </span>
+                  )}
+                </div>
                 <div className="text-[11px] text-muted">
                   {t("marketplace.easystt.desc")}
                 </div>
@@ -152,8 +171,23 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
               <Download size={12} className={installingEasystt ? "animate-pulse" : ""} />
               {installingEasystt
                 ? t("marketplace.easystt.installing")
-                : t("marketplace.easystt.install")}
+                : easysttOk
+                  ? t("marketplace.repair")
+                  : t("marketplace.easystt.install")}
             </button>
+            <div className="text-[11px]">
+              <span className="text-muted">{t("ai.statusLabel")}: </span>
+              <span
+                className={cn(
+                  easysttOk && "text-emerald-400",
+                  !easysttOk && "text-muted",
+                )}
+              >
+                {easysttOk
+                  ? t("marketplace.easystt.status.ok")
+                  : t("marketplace.easystt.status.missing")}
+              </span>
+            </div>
             {easysttMsg && (
               <div className="text-[11px] text-muted break-all">{easysttMsg}</div>
             )}

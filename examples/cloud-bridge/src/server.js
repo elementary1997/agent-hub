@@ -18,15 +18,18 @@
 //   CLOUD_BRIDGE_PORT    overrides --port
 
 import { createServer } from "node:http";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { homedir, platform } from "node:os";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 
 import { streamOpenRouter } from "./providers/openrouter.js";
-import { streamCloudRu } from "./providers/cloudru.js";
+import { resolveCloudRuBearer, streamCloudRu } from "./providers/cloudru.js";
+
+const __hub_dir = dirname(fileURLToPath(import.meta.url));
+const CREDENTIALS_FILE = join(__hub_dir, "hub-credentials.json");
 
 // ─── Configuration ──────────────────────────────────────────────────────────
 
@@ -34,6 +37,50 @@ const AGENT_ID = "cloud-bridge";
 const HOST = "127.0.0.1";
 const PORT = portFromArgs() ?? Number(process.env.CLOUD_BRIDGE_PORT) ?? 8742;
 const VERSION = "0.1.0";
+/** Patched per bundle in packaged agents: openrouter-only | cloudru-only | both. */
+const HUB_PROVIDER_ENUM = ["openrouter", "cloudru"];
+const SECRET_MASK = "********";
+const DEFAULT_CLOUDRU_BASE = "https://foundation-models.api.cloud.ru/v1";
+
+let secrets = {
+  openrouter_api_key: "",
+  cloudru_api_key: "",
+  cloudru_key_id: "",
+};
+
+function loadSecretsFromDisk() {
+  try {
+    const raw = readFileSync(CREDENTIALS_FILE, "utf8");
+    const j = JSON.parse(raw);
+    if (typeof j.openrouter_api_key === "string") {
+      secrets.openrouter_api_key = j.openrouter_api_key;
+    }
+    if (typeof j.cloudru_api_key === "string") {
+      secrets.cloudru_api_key = j.cloudru_api_key;
+    }
+    if (typeof j.cloudru_key_id === "string") {
+      secrets.cloudru_key_id = j.cloudru_key_id;
+    }
+  } catch {
+    /* first run — no file yet */
+  }
+}
+
+function saveSecretsToDisk() {
+  writeFileSync(
+    CREDENTIALS_FILE,
+    JSON.stringify(
+      {
+        openrouter_api_key: secrets.openrouter_api_key,
+        cloudru_api_key: secrets.cloudru_api_key,
+        cloudru_key_id: secrets.cloudru_key_id,
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+}
 
 const DEFAULT_MODELS = [
   "anthropic/claude-sonnet-4.5",
@@ -45,18 +92,29 @@ const DEFAULT_MODELS = [
   "meta-llama/llama-3.3-70b-instruct",
 ];
 
+loadSecretsFromDisk();
+
 const config = {
   provider: process.env.CLOUD_BRIDGE_PROVIDER ?? "openrouter",
   default_model:
     process.env.CLOUD_BRIDGE_DEFAULT_MODEL ?? DEFAULT_MODELS[0],
   max_tokens: 0,
   temperature: 0.7,
+  cloudru_base_url: DEFAULT_CLOUDRU_BASE,
 };
 
 const env = {
-  openrouter_key: process.env.OPENROUTER_API_KEY ?? "",
-  cloudru_key: process.env.CLOUDRU_BEARER ?? "",
+  openrouter_key: "",
+  cloudru_key: "",
 };
+
+function syncEnvKeys() {
+  env.openrouter_key =
+    process.env.OPENROUTER_API_KEY || secrets.openrouter_api_key || "";
+  env.cloudru_key = process.env.CLOUDRU_BEARER || secrets.cloudru_api_key || "";
+}
+
+syncEnvKeys();
 
 // ─── In-memory state ────────────────────────────────────────────────────────
 
@@ -86,6 +144,24 @@ const server = createServer((req, res) => {
   if (route === "GET /config") return sendJson(res, getConfig());
   if (route === "PUT /config") {
     return readJson(req, (body) => sendJson(res, putConfig(body)));
+  }
+  if (route === "POST /test/openrouter") {
+    readJsonAsync(req)
+      .then((body) => handleTestOpenRouter(body))
+      .then((out) => sendJson(res, out))
+      .catch((e) =>
+        sendJson(res, { ok: false, error: String(e?.message ?? e) }, 500),
+      );
+    return;
+  }
+  if (route === "POST /test/cloudru") {
+    readJsonAsync(req)
+      .then((body) => handleTestCloudRu(body))
+      .then((out) => sendJson(res, out))
+      .catch((e) =>
+        sendJson(res, { ok: false, error: String(e?.message ?? e) }, 500),
+      );
+    return;
   }
   if (route === "GET /conversations") {
     return sendJson(res, listConversations());
@@ -177,15 +253,24 @@ function status() {
   };
 }
 
+function publicConfigView() {
+  return {
+    ...config,
+    openrouter_api_key: secrets.openrouter_api_key ? SECRET_MASK : "",
+    cloudru_api_key: secrets.cloudru_api_key ? SECRET_MASK : "",
+    cloudru_key_id: secrets.cloudru_key_id || "",
+  };
+}
+
 function getConfig() {
   return {
-    config,
+    config: publicConfigView(),
     schema: {
       type: "object",
       properties: {
         provider: {
           type: "string",
-          enum: ["openrouter", "cloudru"],
+          enum: HUB_PROVIDER_ENUM,
           description: "Upstream LLM provider",
         },
         default_model: {
@@ -203,13 +288,40 @@ function getConfig() {
           minimum: 0,
           maximum: 2,
         },
+        cloudru_base_url: {
+          type: "string",
+          title: "Cloud.ru API base URL",
+          description: "Foundation Models OpenAI-compatible root (no trailing slash)",
+        },
+        openrouter_api_key: {
+          type: "string",
+          format: "password",
+          title: "OpenRouter API key",
+          description:
+            "sk-or-… key (stored locally in hub-credentials.json). Leave mask unchanged to keep current key.",
+        },
+        cloudru_key_id: {
+          type: "string",
+          title: "Cloud.ru Key ID",
+          description: "Optional. If empty, Key secret is used as Bearer token.",
+        },
+        cloudru_api_key: {
+          type: "string",
+          format: "password",
+          title: "Cloud.ru Key secret",
+          description:
+            "API secret from Cloud.ru console (or Bearer). Leave mask unchanged to keep.",
+        },
       },
     },
   };
 }
 
 function putConfig(body) {
-  if (typeof body?.provider === "string" && (body.provider === "openrouter" || body.provider === "cloudru")) {
+  if (
+    typeof body?.provider === "string" &&
+    HUB_PROVIDER_ENUM.includes(body.provider)
+  ) {
     config.provider = body.provider;
   }
   if (typeof body?.default_model === "string" && body.default_model.length > 0) {
@@ -221,7 +333,97 @@ function putConfig(body) {
   if (typeof body?.temperature === "number") {
     config.temperature = clamp(body.temperature, 0, 2);
   }
-  return { ok: true, config };
+  if (typeof body?.cloudru_base_url === "string" && body.cloudru_base_url.trim()) {
+    config.cloudru_base_url = body.cloudru_base_url.trim().replace(/\/$/, "");
+  }
+
+  if (typeof body?.openrouter_api_key === "string") {
+    if (body.openrouter_api_key === "") {
+      secrets.openrouter_api_key = "";
+    } else if (body.openrouter_api_key !== SECRET_MASK) {
+      secrets.openrouter_api_key = body.openrouter_api_key;
+    }
+  }
+  if (typeof body?.cloudru_api_key === "string") {
+    if (body.cloudru_api_key === "") {
+      secrets.cloudru_api_key = "";
+    } else if (body.cloudru_api_key !== SECRET_MASK) {
+      secrets.cloudru_api_key = body.cloudru_api_key;
+    }
+  }
+  if (typeof body?.cloudru_key_id === "string") {
+    secrets.cloudru_key_id = body.cloudru_key_id.trim();
+  }
+
+  syncEnvKeys();
+  saveSecretsToDisk();
+  const snapshot = getConfig();
+  return { ok: true, config: snapshot.config, schema: snapshot.schema };
+}
+
+async function handleTestOpenRouter(body) {
+  const override =
+    typeof body?.api_key === "string" && body.api_key.trim()
+      ? body.api_key.trim()
+      : null;
+  const key = override || env.openrouter_key;
+  if (!key) {
+    return { ok: false, error: "OpenRouter API key missing — save key first or pass api_key in body." };
+  }
+  const r = await fetch("https://openrouter.ai/api/v1/models", {
+    headers: { Authorization: `Bearer ${key}` },
+  });
+  const text = await r.text();
+  if (!r.ok) {
+    return { ok: false, error: `HTTP ${r.status}: ${text.slice(0, 400)}` };
+  }
+  const data = JSON.parse(text);
+  const models = (data.data ?? [])
+    .map((m) => m.id)
+    .filter(Boolean)
+    .slice(0, 120);
+  return { ok: true, models };
+}
+
+async function handleTestCloudRu(body) {
+  const overrideKey =
+    typeof body?.cloudru_api_key === "string" && body.cloudru_api_key.trim()
+      ? body.cloudru_api_key.trim()
+      : null;
+
+  const secret = overrideKey || secrets.cloudru_api_key || env.cloudru_key;
+  const keyId =
+    typeof body?.cloudru_key_id === "string"
+      ? body.cloudru_key_id.trim()
+      : secrets.cloudru_key_id;
+
+  if (!secret) {
+    return {
+      ok: false,
+      error: "Cloud.ru key secret missing — save credentials first or pass in body.",
+    };
+  }
+
+  const base = (
+    (typeof body?.cloudru_base_url === "string" && body.cloudru_base_url.trim()) ||
+    config.cloudru_base_url ||
+    DEFAULT_CLOUDRU_BASE
+  ).replace(/\/$/, "");
+
+  const bearer = await resolveCloudRuBearer(keyId, secret);
+  const r = await fetch(`${base}/models`, {
+    headers: { Authorization: `Bearer ${bearer}` },
+  });
+  const text = await r.text();
+  if (!r.ok) {
+    return { ok: false, error: `HTTP ${r.status}: ${text.slice(0, 400)}` };
+  }
+  const data = JSON.parse(text);
+  const models = (data.data ?? [])
+    .map((m) => m.id)
+    .filter(Boolean)
+    .slice(0, 120);
+  return { ok: true, models };
 }
 
 function listConversations() {
@@ -285,7 +487,7 @@ async function streamMessage(req, res, c) {
 
   if (!hasKey(config.provider)) {
     send("error", {
-      message: `${config.provider} key missing — set ${keyEnvName(config.provider)} in the agent's environment.`,
+      message: `${config.provider} API credentials missing — save keys in agent config (stored locally in hub-credentials.json), or set ${keyEnvName(config.provider)}.`,
     });
     res.end();
     return;
@@ -300,11 +502,16 @@ async function streamMessage(req, res, c) {
   let assistantText = "";
   let finishReason = "stop";
   try {
-    for await (const event of upstream({
+    const streamOpts = {
       apiKey: keyFor(config.provider),
       model,
       messages,
-    })) {
+    };
+    if (config.provider === "cloudru") {
+      streamOpts.cloudruKeyId = secrets.cloudru_key_id;
+      streamOpts.baseUrl = config.cloudru_base_url;
+    }
+    for await (const event of upstream(streamOpts)) {
       if (res.writableEnded) break;
       if (event.type === "delta") {
         assistantText += event.data?.text ?? "";
@@ -343,7 +550,11 @@ async function streamMessage(req, res, c) {
 // ─── Provider plumbing ──────────────────────────────────────────────────────
 
 function streamFor(provider) {
-  if (provider === "cloudru") return streamCloudRu;
+  if (provider === "cloudru") {
+    return async function* cloudWrapped(opts) {
+      yield* streamCloudRu(opts);
+    };
+  }
   return streamOpenRouter;
 }
 

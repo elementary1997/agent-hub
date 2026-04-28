@@ -1,6 +1,17 @@
-import { Activity, Bot, Cog, Hash, Layers, Search, Store, Wrench } from "lucide-react";
+import {
+  Activity,
+  Bot,
+  ChevronRight,
+  Cog,
+  Hash,
+  Layers,
+  Search,
+  Store,
+  Wrench,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
+import { useState } from "react";
 import type { AgentKind } from "@/types/agent";
 
 export type SidebarFilter =
@@ -42,6 +53,7 @@ export function Sidebar({
   onOpenSettings,
 }: SidebarProps) {
   const { t } = useI18n();
+  const [tagsExpanded, setTagsExpanded] = useState(false);
   const tags = tagCounts
     ? Object.entries(tagCounts)
         .filter(([, n]) => n > 0)
@@ -111,34 +123,43 @@ export function Sidebar({
 
         {tags.length > 0 && (
           <>
-            <div className="mt-3 mb-1 px-2.5 text-[10px] uppercase tracking-wider text-muted">
+            <button
+              type="button"
+              onClick={() => setTagsExpanded((v) => !v)}
+              className="mt-3 mb-1 w-full flex items-center gap-1.5 px-2.5 text-[10px] uppercase tracking-wider text-muted hover:text-slate-300 transition-colors text-left"
+            >
+              <ChevronRight
+                size={12}
+                className={cn("transition-transform shrink-0", tagsExpanded && "rotate-90")}
+              />
               {t("sidebar.tags")}
-            </div>
-            {tags.map(([tag, count]) => {
-              const id: SidebarFilter = `tag:${tag}`;
-              const active = filter === id;
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => onFilterChange(id)}
-                  className={cn(
-                    "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px]",
-                    "transition-colors mb-0.5",
-                    active
-                      ? "bg-bg-card text-slate-100 border border-border-default"
-                      : "text-muted hover:bg-bg-card/40 hover:text-slate-200 border border-transparent",
-                  )}
-                  title={`Filter by tag: ${tag}`}
-                >
-                  <Hash size={13} strokeWidth={1.75} />
-                  <span className="flex-1 text-left truncate">{tag}</span>
-                  <span className="text-[11px] tabular-nums text-muted">
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
+            </button>
+            {tagsExpanded &&
+              tags.map(([tag, count]) => {
+                const id: SidebarFilter = `tag:${tag}`;
+                const active = filter === id;
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => onFilterChange(id)}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-[13px]",
+                      "transition-colors mb-0.5",
+                      active
+                        ? "bg-bg-card text-slate-100 border border-border-default"
+                        : "text-muted hover:bg-bg-card/40 hover:text-slate-200 border border-transparent",
+                    )}
+                    title={`Filter by tag: ${tag}`}
+                  >
+                    <Hash size={13} strokeWidth={1.75} />
+                    <span className="flex-1 text-left truncate">{tag}</span>
+                    <span className="text-[11px] tabular-nums text-muted">
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
           </>
         )}
       </nav>

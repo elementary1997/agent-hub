@@ -85,6 +85,10 @@ async fn install_cloudru_agent_inner(app: &AppHandle) -> Result<InstallCloudRuRe
 
 fn patch_server_js(src: &str) -> String {
     src.replace(
+        "const HUB_PROVIDER_ENUM = [\"openrouter\", \"cloudru\"];",
+        "const HUB_PROVIDER_ENUM = [\"cloudru\"];",
+    )
+    .replace(
         "const AGENT_ID = \"cloud-bridge\";",
         "const AGENT_ID = \"cloudru-agent\";",
     )

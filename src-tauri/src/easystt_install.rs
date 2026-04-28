@@ -6,6 +6,7 @@
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use serde::Serialize;
+use std::path::PathBuf;
 use tauri::AppHandle;
 use tauri::Manager;
 
@@ -35,6 +36,62 @@ pub async fn install_easystt_latest(app: AppHandle) -> Result<EasysttInstallResu
     install_easystt_latest_inner(&app)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// True if a typical easySTT install path exists (standalone app, no hub manifest required).
+#[tauri::command]
+pub fn easystt_installed() -> bool {
+    easystt_installed_inner()
+}
+
+fn easystt_installed_inner() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            let p = PathBuf::from(local)
+                .join("Programs")
+                .join("easySTT")
+                .join("easySTT.exe");
+            if p.is_file() {
+                return true;
+            }
+        }
+        for key in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Ok(base) = std::env::var(key) {
+                let p = PathBuf::from(base).join("easySTT").join("easySTT.exe");
+                if p.is_file() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    #[cfg(target_os = "macos")]
+    {
+        PathBuf::from("/Applications/easySTT.app").exists()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        for path in [
+            "/usr/bin/easystt",
+            "/usr/local/bin/easystt",
+            "/usr/bin/easy-stt",
+            "/usr/local/bin/easy-stt",
+        ] {
+            if PathBuf::from(path).is_file() {
+                return true;
+            }
+        }
+        false
+    }
+    #[cfg(not(any(
+        target_os = "windows",
+        target_os = "macos",
+        target_os = "linux"
+    )))]
+    {
+        false
+    }
 }
 
 async fn install_easystt_latest_inner(app: &AppHandle) -> Result<EasysttInstallResult> {

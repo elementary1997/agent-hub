@@ -10,6 +10,7 @@ import {
   Terminal,
   Settings2,
   Activity,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useAgentStore } from "@/store/agents";
@@ -23,10 +24,12 @@ import {
   setAutoStart,
   startManagedAgent,
   stopManagedAgent,
+  uninstallAgentLocal,
   type AgentConfigResponse,
   type AgentLogLine,
   type AutoStartView,
 } from "@/lib/api";
+import { ProviderAuthTests } from "@/components/ProviderAuthTests";
 import { SchemaForm } from "@/components/SchemaForm";
 
 interface AgentDetailProps {
@@ -171,6 +174,19 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
     [agentId, refreshAutoStart],
   );
 
+  const handleUninstallLocal = useCallback(async () => {
+    const ok = window.confirm(
+      "Remove this agent from this computer? The Marketplace catalog will not change — only local manifest and install files.",
+    );
+    if (!ok) return;
+    try {
+      await uninstallAgentLocal(agentId);
+      onBack();
+    } catch (e) {
+      window.alert(String(e));
+    }
+  }, [agentId, onBack]);
+
   const initialConfig = useMemo(
     () => (config?.config as Record<string, unknown> | undefined) ?? {},
     [config],
@@ -298,6 +314,16 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
               <div className="text-xs uppercase tracking-wider text-muted mb-2">
                 Agent config
               </div>
+
+              {config && !configUnsupported && agent.manifest.endpoint && isAi && (
+                <div className="mb-6">
+                  <ProviderAuthTests
+                    agentId={agentId}
+                    endpoint={agent.manifest.endpoint}
+                  />
+                </div>
+              )}
+
               {configError ? (
                 configUnsupported ? (
                   <div className="rounded-lg border border-border-subtle bg-bg-card/40 p-4 text-sm text-slate-200">
@@ -315,12 +341,33 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
                   </div>
                 )
               ) : config ? (
-                <SchemaForm
-                  schema={config.schema}
-                  initial={initialConfig}
-                  onSubmit={handleSaveConfig}
-                  busy={savingConfig}
-                />
+                <>
+                  <SchemaForm
+                    schema={config.schema}
+                    initial={initialConfig}
+                    onSubmit={handleSaveConfig}
+                    busy={savingConfig}
+                  />
+                  {isManaged && (
+                    <div className="mt-8 rounded-xl border border-red-500/25 bg-red-500/5 p-4 space-y-2">
+                      <div className="text-xs uppercase tracking-wider text-red-300/90">
+                        Remove from this computer
+                      </div>
+                      <p className="text-[11px] text-muted">
+                        Deletes the agent manifest and bundled install directory (for hub-installed
+                        agents). Does not remove anything from the Marketplace screen.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleUninstallLocal()}
+                        className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                        Uninstall agent
+                      </button>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="text-sm text-muted">Loading…</div>
               )}

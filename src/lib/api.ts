@@ -58,6 +58,7 @@ export interface AgentConfigProperty {
   minimum?: number;
   maximum?: number;
   maxLength?: number;
+  /** e.g. `"password"` — masked input in SchemaForm */
   format?: string;
 }
 
@@ -173,4 +174,18 @@ export interface EasysttInstallResult {
 
 export function installEasysttLatest(): Promise<EasysttInstallResult> {
   return invoke<EasysttInstallResult>("install_easystt_latest");
+}
+
+export function easysttInstalled(): Promise<boolean> {
+  return invoke<boolean>("easystt_installed");
+}
+
+export function uninstallAgentLocal(id: string): Promise<void> {
+  return invoke<void>("agent_uninstall_local", { id });
+}
+
+export interface ProviderTestResult {
+  ok: boolean;
+  models?: string[];
+  error?: string;
 }

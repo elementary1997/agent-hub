@@ -175,6 +175,18 @@ function FieldInput({ property, value, onChange }: Omit<FieldProps, "name">) {
 
   // string / fallback
   const stringValue = typeof value === "string" ? value : value == null ? "" : String(value);
+  if (property.format === "password") {
+    return (
+      <input
+        type="password"
+        autoComplete="off"
+        value={stringValue}
+        maxLength={property.maxLength}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-bg-elev border border-border-subtle rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-border-default"
+      />
+    );
+  }
   if (property.maxLength && property.maxLength > 80) {
     return (
       <textarea

@@ -84,7 +84,11 @@ async fn install_openrouter_agent_inner(app: &AppHandle) -> Result<InstallOpenRo
 }
 
 fn patch_server_js(src: &str) -> String {
-    src.replace("const AGENT_ID = \"cloud-bridge\";", "const AGENT_ID = \"openrouter-agent\";")
+    src.replace(
+        "const HUB_PROVIDER_ENUM = [\"openrouter\", \"cloudru\"];",
+        "const HUB_PROVIDER_ENUM = [\"openrouter\"];",
+    )
+        .replace("const AGENT_ID = \"cloud-bridge\";", "const AGENT_ID = \"openrouter-agent\";")
         .replace("const PORT = portFromArgs() ?? Number(process.env.CLOUD_BRIDGE_PORT) ?? 8742;", &format!("const PORT = portFromArgs() ?? Number(process.env.CLOUD_BRIDGE_PORT) ?? {AGENT_PORT};"))
         .replace("const VERSION = \"0.1.0\";", &format!("const VERSION = \"{AGENT_VERSION}\";"))
         .replace("name: \"Cloud Bridge\",", "name: \"OpenRouter Agent\",")

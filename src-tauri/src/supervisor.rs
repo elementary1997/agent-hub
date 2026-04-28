@@ -10,6 +10,7 @@
 //! managed state.
 
 use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -17,7 +18,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use tauri::async_runtime::JoinHandle;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
@@ -162,23 +163,46 @@ impl Supervisor {
 
     /// POST /quit, wait for grace, kill if it doesn't bow out.
     pub async fn stop(&self, id: &str) -> Result<()> {
+        let endpoint = self.registry.endpoint_of(id).await;
+
         let slot = {
             let slots = self.slots.lock().await;
             slots
                 .get(id)
                 .map(|s| (s.child.clone(), s.intentional_exit.clone()))
         };
+
         let Some((child, intentional)) = slot else {
+            // Slot missing but process may still be alive — still ask the agent to quit.
+            if let Some(ep) = endpoint {
+                let url = format!("{}/quit", ep.trim_end_matches('/'));
+                let _ = self
+                    .registry
+                    .http_client()
+                    .post(url)
+                    .timeout(Duration::from_secs(15))
+                    .send()
+                    .await;
+            }
             return Ok(());
         };
+
         *intentional.lock().await = true;
 
         // Try graceful first — agents implement POST /quit per protocol §2.
-        if let Some(endpoint) = self.registry.endpoint_of(id).await {
-            let url = format!("{}/quit", endpoint.trim_end_matches('/'));
-            let _ = self.registry.http_client().post(url).send().await;
+        if let Some(ep) = endpoint {
+            let url = format!("{}/quit", ep.trim_end_matches('/'));
+            let _ = self
+                .registry
+                .http_client()
+                .post(url)
+                .timeout(Duration::from_secs(15))
+                .send()
+                .await;
         }
 
+        // While `supervisor_loop` calls `take()` on the child for blocking `wait()`, the mutex
+        // is empty — don't exit immediately; wait STOP_GRACE so /quit + exit can complete.
         let kill_after = Instant::now() + STOP_GRACE;
         loop {
             {
@@ -200,7 +224,7 @@ impl Supervisor {
                             break;
                         }
                     }
-                } else {
+                } else if Instant::now() >= kill_after {
                     break;
                 }
             }
@@ -426,4 +450,38 @@ pub async fn agent_is_managed_running(
     supervisor: tauri::State<'_, Arc<Supervisor>>,
 ) -> Result<bool, String> {
     Ok(supervisor.is_running(&id).await)
+}
+
+/// Removes the agent manifest from disk and deletes bundled install dirs for
+/// marketplace-installed agents (`openrouter-agent`, `cloudru-agent`). Does not
+/// alter the in-app Marketplace catalog.
+#[tauri::command]
+pub async fn agent_uninstall_local(
+    id: String,
+    supervisor: tauri::State<'_, Arc<Supervisor>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let _ = supervisor.stop(&id).await;
+
+    let manifest = hub_manifest_json_path(&id)?;
+    if manifest.exists() {
+        std::fs::remove_file(&manifest).map_err(|e| e.to_string())?;
+    }
+
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    for sub in ["openrouter-agent", "cloudru-agent"] {
+        if sub == id.as_str() {
+            let dir = app_data.join(sub);
+            if dir.exists() {
+                std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+            }
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn hub_manifest_json_path(id: &str) -> Result<PathBuf, String> {
+    let base = dirs::config_dir().ok_or_else(|| "cannot resolve config dir".to_string())?;
+    Ok(base.join("agent-hub").join("agents").join(format!("{id}.json")))
 }

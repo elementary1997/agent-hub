@@ -156,11 +156,13 @@ pub fn run() {
             supervisor::agent_stop_managed,
             supervisor::agent_logs,
             supervisor::agent_is_managed_running,
+            supervisor::agent_uninstall_local,
             prefs::agent_get_auto_start,
             prefs::agent_set_auto_start,
             openrouter_agent::install_openrouter_agent,
             cloudru_agent::install_cloudru_agent,
             easystt_install::install_easystt_latest,
+            easystt_install::easystt_installed,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agent Hub");
