@@ -145,7 +145,7 @@ Goal: feels modern.
 - [x] Sidebar footer renders the hotkey hint so users discover it without
       hunting through settings.
 
-### v0.4.2 — Theme switcher (next)
+### v0.4.2 — Theme switcher + custom hotkeys (next)
 
 - [ ] Theme switcher (dark / light), persistent in `tauri-plugin-store`.
       Requires re-tokenising the existing palette through CSS variables so
@@ -154,6 +154,14 @@ Goal: feels modern.
       "New chat with last-used AI".
 
 End state: feels fast and pretty without breaking.
+
+### v0.4.x — Hub Settings page (shipped)
+
+- [x] Real Settings screen (sidebar bottom button + ⌘K → "Open Settings").
+      Sections: Build (version / git hash / built-at), Hotkeys reference,
+      Storage (manifest dir, chat.db path + size + counts via new
+      `chat_db_stats` Tauri command, refresh button), Auto-start matrix
+      with per-agent toggles, Chat history explainer, About + repo link.
 
 ## v1.0 — Polish & release (target: 1 week)
 

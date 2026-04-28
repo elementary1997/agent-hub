@@ -23,6 +23,7 @@ export interface SidebarProps {
   counts: Record<string, number>;
   tagCounts?: Record<string, number>;
   onOpenPalette?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export function Sidebar({
@@ -31,6 +32,7 @@ export function Sidebar({
   counts,
   tagCounts,
   onOpenPalette,
+  onOpenSettings,
 }: SidebarProps) {
   const tags = tagCounts
     ? Object.entries(tagCounts)
@@ -140,6 +142,7 @@ export function Sidebar({
         </div>
         <button
           type="button"
+          onClick={onOpenSettings}
           className={cn(
             "w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm",
             "text-muted hover:text-slate-200 hover:bg-bg-card/40 transition-colors",

@@ -1,6 +1,6 @@
 [package]
 name = "agent-hub"
-version = "0.4.4"
+version = "0.4.5"
 description = "Local-first dashboard and supervisor for personal mini-agents"
 authors = []
 license = "MIT"

@@ -147,6 +147,7 @@ pub fn run() {
             chat::chat_patch_conversation,
             chat::chat_send_message,
             chat::chat_search,
+            chat::chat_db_stats,
             supervisor::agent_start,
             supervisor::agent_stop_managed,
             supervisor::agent_logs,

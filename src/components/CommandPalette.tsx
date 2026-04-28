@@ -34,6 +34,7 @@ interface CommandPaletteProps {
   onClose: () => void;
   onOpenChat: (id: string, conversationId?: string | null) => void;
   onOpenDetail: (id: string) => void;
+  onOpenSettings?: () => void;
 }
 
 interface PaletteAction {
@@ -62,6 +63,7 @@ export function CommandPalette({
   onClose,
   onOpenChat,
   onOpenDetail,
+  onOpenSettings,
 }: CommandPaletteProps) {
   const agentsMap = useAgentStore((s) => s.agents);
   const agents = useMemo(() => Object.values(agentsMap), [agentsMap]);
@@ -72,8 +74,8 @@ export function CommandPalette({
   const listRef = useRef<HTMLDivElement>(null);
 
   const actions = useMemo(
-    () => buildActions(agents, { onOpenChat, onOpenDetail }),
-    [agents, onOpenChat, onOpenDetail],
+    () => buildActions(agents, { onOpenChat, onOpenDetail, onOpenSettings }),
+    [agents, onOpenChat, onOpenDetail, onOpenSettings],
   );
 
   // Debounced FTS over the local chat cache. Only fires for non-trivial
@@ -301,12 +303,30 @@ function Hint({ k, label }: { k: string; label: string }) {
 }
 
 interface BuildOpts {
-  onOpenChat: (id: string) => void;
+  onOpenChat: (id: string, conversationId?: string | null) => void;
   onOpenDetail: (id: string) => void;
+  onOpenSettings?: () => void;
 }
 
 function buildActions(agents: Agent[], opts: BuildOpts): PaletteAction[] {
   const out: PaletteAction[] = [];
+
+  if (opts.onOpenSettings) {
+    out.push({
+      id: "hub:settings",
+      label: "Open Settings",
+      hint: "Hub-wide configuration, hotkeys, storage, auto-start",
+      icon: Settings2,
+      agentId: "__hub__",
+      agentName: "Hub",
+      agentKind: "utility",
+      accent: "#7c5cff",
+      weight: 90,
+      searchable: "open settings preferences hub",
+      run: () => opts.onOpenSettings?.(),
+    });
+  }
+
   for (const agent of agents) {
     const { manifest, runtime } = agent;
     const accent = manifest.accent ?? "#7c5cff";

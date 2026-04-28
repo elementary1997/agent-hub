@@ -133,3 +133,15 @@ export function searchChats(
 ): Promise<ChatSearchHit[]> {
   return invoke<ChatSearchHit[]>("chat_search", { query, limit });
 }
+
+export interface ChatDbStats {
+  path: string;
+  size_bytes: number;
+  conversations: number;
+  messages: number;
+  fts_indexed: number;
+}
+
+export function getChatDbStats(): Promise<ChatDbStats | null> {
+  return invoke<ChatDbStats | null>("chat_db_stats");
+}

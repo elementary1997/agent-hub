@@ -39,6 +39,16 @@ pub struct StoredMessage {
 
 pub struct ChatDb {
     conn: Mutex<Connection>,
+    path: PathBuf,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ChatDbStats {
+    pub path: String,
+    pub size_bytes: u64,
+    pub conversations: i64,
+    pub messages: i64,
+    pub fts_indexed: i64,
 }
 
 impl ChatDb {
@@ -52,6 +62,33 @@ impl ChatDb {
         Self::migrate(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
+            path,
+        })
+    }
+
+    pub fn stats(&self) -> Result<ChatDbStats> {
+        let conn = self.conn.lock().unwrap();
+        let conversations: i64 = conn
+            .query_row("SELECT COUNT(*) FROM conversations", [], |r| r.get(0))
+            .unwrap_or(0);
+        let messages: i64 = conn
+            .query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))
+            .unwrap_or(0);
+        let fts_indexed: i64 = conn
+            .query_row("SELECT COUNT(*) FROM messages_fts", [], |r| r.get(0))
+            .unwrap_or(0);
+        // size_bytes: prefer the file on disk; in WAL mode the journal /
+        // shm files exist alongside but the principal page count lives
+        // in the main file and that's what users care about.
+        let size_bytes = std::fs::metadata(&self.path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        Ok(ChatDbStats {
+            path: self.path.display().to_string(),
+            size_bytes,
+            conversations,
+            messages,
+            fts_indexed,
         })
     }
 

@@ -4,6 +4,7 @@ import { AgentCard } from "@/components/AgentCard";
 import { AgentDetail } from "@/components/AgentDetail";
 import { ChatView } from "@/components/ChatView";
 import { CommandPalette } from "@/components/CommandPalette";
+import { SettingsView } from "@/components/SettingsView";
 import { Sidebar, type SidebarFilter } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { useAgentStore } from "@/store/agents";
@@ -55,6 +56,7 @@ export default function App() {
   const [chatAgent, setChatAgent] = useState<string | null>(null);
   const [chatConversation, setChatConversation] = useState<string | null>(null);
   const [detailAgent, setDetailAgent] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   // ⌘K / Ctrl+K opens the command palette from anywhere.
@@ -71,12 +73,19 @@ export default function App() {
 
   const handleOpenChat = (id: string, conversationId?: string | null) => {
     setDetailAgent(null);
+    setSettingsOpen(false);
     setChatConversation(conversationId ?? null);
     setChatAgent(id);
   };
   const handleOpenDetail = (id: string) => {
     setChatAgent(null);
+    setSettingsOpen(false);
     setDetailAgent(id);
+  };
+  const handleOpenSettings = () => {
+    setChatAgent(null);
+    setDetailAgent(null);
+    setSettingsOpen(true);
   };
 
   useEffect(() => {
@@ -174,6 +183,7 @@ export default function App() {
       onClose={() => setPaletteOpen(false)}
       onOpenChat={handleOpenChat}
       onOpenDetail={handleOpenDetail}
+      onOpenSettings={handleOpenSettings}
     />
   );
 
@@ -206,6 +216,15 @@ export default function App() {
     );
   }
 
+  if (settingsOpen) {
+    return (
+      <div className="h-screen w-screen overflow-hidden">
+        <SettingsView onBack={() => setSettingsOpen(false)} />
+        {palette}
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       {palette}
@@ -215,6 +234,7 @@ export default function App() {
         counts={counts}
         tagCounts={tagCounts}
         onOpenPalette={() => setPaletteOpen(true)}
+        onOpenSettings={handleOpenSettings}
       />
 
       <main className="flex-1 flex flex-col min-w-0">

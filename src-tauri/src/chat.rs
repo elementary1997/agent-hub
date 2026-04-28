@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::agents::Registry;
-use crate::chatdb::{ChatDb, SearchHit};
+use crate::chatdb::{ChatDb, ChatDbStats, SearchHit};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChatConversation {
@@ -322,6 +322,17 @@ pub async fn chat_patch_conversation(
         );
     }
     Ok(conv)
+}
+
+// ─── Tauri command: chat-db stats ─────────────────────────────────────────
+
+#[tauri::command]
+pub async fn chat_db_stats(app: AppHandle) -> Result<Option<ChatDbStats>, String> {
+    let db = match db_of(&app) {
+        Some(db) => db,
+        None => return Ok(None),
+    };
+    db.stats().map(Some).map_err(|e| e.to_string())
 }
 
 // ─── Tauri command: full-text search ──────────────────────────────────────
