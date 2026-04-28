@@ -25,3 +25,13 @@ export function onAgentUpserted(cb: (a: Agent) => void): Promise<UnlistenFn> {
 export function onAgentRemoved(cb: (id: string) => void): Promise<UnlistenFn> {
   return listen<string>("agent-removed", (e) => cb(e.payload));
 }
+
+export interface AgentEvent {
+  agentId: string;
+  type: string;
+  data: unknown;
+}
+
+export function onAgentEvent(cb: (e: AgentEvent) => void): Promise<UnlistenFn> {
+  return listen<AgentEvent>("agent-event", (e) => cb(e.payload));
+}

@@ -3,23 +3,25 @@
 Each milestone is a working deliverable — usable end of every step, not just
 end of v1.0.
 
-## v0.1 — Foundation (target: 1–2 weeks)
+## v0.1 — Foundation
 
 Goal: see a real running agent in the hub, open its native UI from the hub.
 
-- [ ] Tauri 2 + React + Tailwind + shadcn/ui scaffolding
-- [ ] Dark theme, base layout (sidebar + card grid)
-- [ ] Manifest registry — read `~/.config/agent-hub/agents/*.json`,
-      hot-reload on changes
-- [ ] HTTP client per agent: `GET /status` polled every 3 s
-- [ ] WebSocket subscription to `/events`, aggregated activity feed
-- [ ] Card with: name, status dot, busy indicator, last event time, accent colour
-- [ ] Buttons: "Open native UI" (POSTs `/open-native-ui`), "Settings"
-- [ ] **easySTT integration** — separate PR in easySTT repo:
-      `agent_api.rs` (~150 LoC: axum server, manifest write at startup)
+- [x] Tauri 2 + React + Tailwind + shadcn primitives scaffolding (`e01e584`)
+- [x] Dark theme, base layout (sidebar + card grid) (`e01e584`)
+- [x] Manifest registry — read `~/.config/agent-hub/agents/*.json`,
+      hot-reload via `notify` (`771ddc4`)
+- [x] HTTP client per agent: `GET /status` polled every 3 s (`771ddc4`)
+- [x] WebSocket subscription to `/events`, runtime busy/error dispatch +
+      `agent-event` Tauri stream + 50-event rolling buffer per agent
+- [x] Card with: name, status dot, busy indicator, last event time, accent
+- [x] Buttons: "Open native UI" (POSTs `/open-native-ui`), "Settings" (placeholder)
+- [x] **easySTT integration** — `agent_api.rs` axum server + manifest writer
+- [x] **CI** — Build + Release workflows for `.exe` + `.deb`
 
-End state: launch hub → see easySTT card with live status → click "Open native"
-→ easySTT settings window pops up. Round trip works.
+End state achieved (commits b1d0000 → 771ddc4 → v0.1.2): hub picks up easySTT
+and the echo-agent automatically, busy state flips instantly via WS, "Open"
+button raises easySTT's settings window. Round trip works.
 
 ## v0.2 — AI agent v1 (target: 2 weeks)
 

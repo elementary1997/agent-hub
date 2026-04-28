@@ -7,6 +7,7 @@ import { useAgentStore } from "@/store/agents";
 import {
   agentsDir,
   listAgents,
+  onAgentEvent,
   onAgentRemoved,
   onAgentUpserted,
   openNative,
@@ -33,6 +34,7 @@ export default function App() {
   const setAll = useAgentStore((s) => s.setAll);
   const upsert = useAgentStore((s) => s.upsert);
   const remove = useAgentStore((s) => s.remove);
+  const pushEvent = useAgentStore((s) => s.pushEvent);
   const manifestDir = useAgentStore((s) => s.manifestDir);
   const setManifestDir = useAgentStore((s) => s.setManifestDir);
   const error = useAgentStore((s) => s.error);
@@ -45,6 +47,7 @@ export default function App() {
   useEffect(() => {
     let unlistenUp: (() => void) | null = null;
     let unlistenRm: (() => void) | null = null;
+    let unlistenEv: (() => void) | null = null;
     let cancelled = false;
 
     (async () => {
@@ -55,6 +58,7 @@ export default function App() {
 
         unlistenUp = await onAgentUpserted((a) => upsert(a));
         unlistenRm = await onAgentRemoved((id) => remove(id));
+        unlistenEv = await onAgentEvent((e) => pushEvent(e));
 
         const list = await listAgents();
         if (cancelled) return;
@@ -69,8 +73,9 @@ export default function App() {
       cancelled = true;
       unlistenUp?.();
       unlistenRm?.();
+      unlistenEv?.();
     };
-  }, [setAll, upsert, remove, setManifestDir, setError, setLoaded]);
+  }, [setAll, upsert, remove, pushEvent, setManifestDir, setError, setLoaded]);
 
   const agents = useMemo(() => sortAgents(Object.values(agentsMap)), [agentsMap]);
 

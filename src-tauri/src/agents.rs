@@ -16,15 +16,23 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
+use futures_util::StreamExt;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use serde_json::json;
 use tauri::async_runtime::JoinHandle;
+use tauri::{AppHandle, Emitter};
+use tokio::net::TcpStream;
 use tokio::sync::Mutex;
+use tokio_tungstenite::client_async;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::Message;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
 const POLL_TIMEOUT: Duration = Duration::from_millis(1500);
 const PROTOCOL_VERSION: &str = "0.1";
+const WS_BACKOFF_MIN: Duration = Duration::from_secs(2);
+const WS_BACKOFF_MAX: Duration = Duration::from_secs(30);
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -97,21 +105,23 @@ struct StatusResponse {
 
 // ─── Registry ──────────────────────────────────────────────────────────────
 
-struct PollerHandle {
+struct AgentTasks {
     #[allow(dead_code)]
     endpoint: String,
-    task: JoinHandle<()>,
+    poll_task: JoinHandle<()>,
+    ws_task: JoinHandle<()>,
 }
 
-impl Drop for PollerHandle {
+impl Drop for AgentTasks {
     fn drop(&mut self) {
-        self.task.abort();
+        self.poll_task.abort();
+        self.ws_task.abort();
     }
 }
 
 pub struct Registry {
     agents: Mutex<HashMap<String, AgentRecord>>,
-    pollers: Mutex<HashMap<String, PollerHandle>>,
+    tasks: Mutex<HashMap<String, AgentTasks>>,
     http: reqwest::Client,
 }
 
@@ -123,7 +133,7 @@ impl Registry {
             .expect("failed to build reqwest client");
         Arc::new(Self {
             agents: Mutex::new(HashMap::new()),
-            pollers: Mutex::new(HashMap::new()),
+            tasks: Mutex::new(HashMap::new()),
             http,
         })
     }
@@ -304,7 +314,7 @@ async fn upsert_from_file(
     };
 
     if need_new_poller {
-        spawn_poller(app.clone(), registry.clone(), id.clone(), endpoint).await;
+        spawn_agent_tasks(app.clone(), registry.clone(), id.clone(), endpoint).await;
     }
 
     Ok(())
@@ -318,31 +328,49 @@ async fn remove(app: &AppHandle, registry: &Arc<Registry>, id: &str) {
         }
     }
     {
-        let mut pollers = registry.pollers.lock().await;
-        pollers.remove(id);
+        let mut tasks = registry.tasks.lock().await;
+        tasks.remove(id);
     }
     let _ = app.emit("agent-removed", id);
 }
 
-// ─── Poller ────────────────────────────────────────────────────────────────
+// ─── Per-agent tasks (poll + WS) ───────────────────────────────────────────
 
-async fn spawn_poller(
+async fn spawn_agent_tasks(
     app: AppHandle,
     registry: Arc<Registry>,
     id: String,
     endpoint: String,
 ) {
-    let id_for_task = id.clone();
-    let endpoint_for_task = endpoint.clone();
-    let registry_for_task = registry.clone();
-    let app_for_task = app.clone();
+    let poll_task = {
+        let app = app.clone();
+        let registry = registry.clone();
+        let id = id.clone();
+        let endpoint = endpoint.clone();
+        tauri::async_runtime::spawn(async move {
+            poll_loop(app, registry, id, endpoint).await;
+        })
+    };
 
-    let task = tauri::async_runtime::spawn(async move {
-        poll_loop(app_for_task, registry_for_task, id_for_task, endpoint_for_task).await;
-    });
+    let ws_task = {
+        let app = app.clone();
+        let registry = registry.clone();
+        let id = id.clone();
+        let endpoint = endpoint.clone();
+        tauri::async_runtime::spawn(async move {
+            ws_loop(app, registry, id, endpoint).await;
+        })
+    };
 
-    let mut pollers = registry.pollers.lock().await;
-    pollers.insert(id, PollerHandle { endpoint, task });
+    let mut tasks = registry.tasks.lock().await;
+    tasks.insert(
+        id,
+        AgentTasks {
+            endpoint,
+            poll_task,
+            ws_task,
+        },
+    );
 }
 
 async fn poll_loop(
@@ -402,6 +430,187 @@ async fn poll_loop(
         interval.tick().await;
     }
 }
+
+// ─── WebSocket /events client ──────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct WsEnvelope {
+    #[serde(rename = "type")]
+    kind: String,
+    #[serde(default)]
+    data: serde_json::Value,
+}
+
+async fn ws_loop(
+    app: AppHandle,
+    registry: Arc<Registry>,
+    id: String,
+    endpoint: String,
+) {
+    let ws_url = endpoint
+        .replacen("http://", "ws://", 1)
+        .replacen("https://", "wss://", 1)
+        .trim_end_matches('/')
+        .to_string()
+        + "/events";
+
+    let mut backoff = WS_BACKOFF_MIN;
+    loop {
+        match try_run_ws(&app, &registry, &id, &endpoint, &ws_url).await {
+            Ok(()) => {
+                eprintln!("[agents] ws closed by peer: {id}");
+                backoff = WS_BACKOFF_MIN;
+            }
+            Err(e) => {
+                eprintln!("[agents] ws {id} failed: {e}");
+            }
+        }
+        tokio::time::sleep(backoff).await;
+        backoff = (backoff * 2).min(WS_BACKOFF_MAX);
+    }
+}
+
+async fn try_run_ws(
+    app: &AppHandle,
+    registry: &Arc<Registry>,
+    id: &str,
+    endpoint: &str,
+    ws_url: &str,
+) -> Result<()> {
+    let (host, port) = parse_host_port(endpoint)
+        .ok_or_else(|| anyhow!("cannot parse endpoint {endpoint}"))?;
+    let stream = TcpStream::connect((host.as_str(), port))
+        .await
+        .with_context(|| format!("tcp connect {host}:{port}"))?;
+    let request = ws_url
+        .into_client_request()
+        .with_context(|| format!("invalid ws url {ws_url}"))?;
+    let (mut ws, _resp) = client_async(request, stream)
+        .await
+        .with_context(|| format!("ws handshake {ws_url}"))?;
+
+    while let Some(frame) = ws.next().await {
+        let frame = frame.context("ws read")?;
+        match frame {
+            Message::Text(t) => dispatch_ws_event(app, registry, id, &t).await,
+            Message::Binary(b) => {
+                if let Ok(t) = std::str::from_utf8(&b) {
+                    dispatch_ws_event(app, registry, id, t).await;
+                }
+            }
+            Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {}
+            Message::Close(_) => break,
+        }
+    }
+    Ok(())
+}
+
+async fn dispatch_ws_event(
+    app: &AppHandle,
+    registry: &Arc<Registry>,
+    id: &str,
+    raw: &str,
+) {
+    let envelope: WsEnvelope = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[agents] ws {id}: bad json: {e}");
+            return;
+        }
+    };
+
+    match envelope.kind.as_str() {
+        "agent_busy" => {
+            let busy = envelope
+                .data
+                .get("busy")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let reason = envelope
+                .data
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            apply_busy(app, registry, id, busy, reason).await;
+        }
+        "error" => {
+            let msg = envelope
+                .data
+                .get("message")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            apply_error(app, registry, id, msg).await;
+        }
+        // hello / heartbeat / log / usage_update / tool_called / transcript_*
+        // pass through to the UI feed without touching runtime state.
+        _ => {}
+    }
+
+    let _ = app.emit(
+        "agent-event",
+        json!({
+            "agentId": id,
+            "type": envelope.kind,
+            "data": envelope.data,
+        }),
+    );
+}
+
+async fn apply_busy(
+    app: &AppHandle,
+    registry: &Arc<Registry>,
+    id: &str,
+    busy: bool,
+    reason: Option<String>,
+) {
+    let mut agents = registry.agents.lock().await;
+    let Some(record) = agents.get_mut(id) else {
+        return;
+    };
+    record.runtime.busy = busy;
+    record.runtime.status = if busy {
+        AgentStatus::Busy
+    } else {
+        match record.runtime.status {
+            // Fall back to Running unless poller has marked us offline / errored.
+            AgentStatus::Busy | AgentStatus::Idle => AgentStatus::Running,
+            other => other,
+        }
+    };
+    record.runtime.message = if busy { reason } else { None };
+    let snapshot = record.clone();
+    drop(agents);
+    let _ = app.emit("agent-upserted", &snapshot);
+}
+
+async fn apply_error(app: &AppHandle, registry: &Arc<Registry>, id: &str, message: Option<String>) {
+    let mut agents = registry.agents.lock().await;
+    let Some(record) = agents.get_mut(id) else {
+        return;
+    };
+    record.runtime.status = AgentStatus::Error;
+    record.runtime.busy = false;
+    record.runtime.message = message;
+    let snapshot = record.clone();
+    drop(agents);
+    let _ = app.emit("agent-upserted", &snapshot);
+}
+
+/// Parses `http://host:port[/...]` → `(host, port)`. Local-only — the protocol
+/// guarantees `127.0.0.1`/`localhost` endpoints, so we keep it dependency-free.
+fn parse_host_port(endpoint: &str) -> Option<(String, u16)> {
+    let stripped = endpoint
+        .strip_prefix("http://")
+        .or_else(|| endpoint.strip_prefix("https://"))
+        .or_else(|| endpoint.strip_prefix("ws://"))
+        .or_else(|| endpoint.strip_prefix("wss://"))?;
+    let host_port = stripped.split('/').next()?;
+    let (host, port) = host_port.rsplit_once(':')?;
+    let port = port.parse().ok()?;
+    Some((host.to_string(), port))
+}
+
+// ─── Runtime helpers ───────────────────────────────────────────────────────
 
 #[allow(clippy::type_complexity)]
 async fn update_runtime(
