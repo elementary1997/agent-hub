@@ -4,7 +4,8 @@ import { AgentCard } from "@/components/AgentCard";
 import { AgentDetail } from "@/components/AgentDetail";
 import { ChatView } from "@/components/ChatView";
 import { CommandPalette } from "@/components/CommandPalette";
-import { SettingsView, type SettingsTab } from "@/components/SettingsView";
+import { MarketplaceView } from "@/components/MarketplaceView";
+import { SettingsView } from "@/components/SettingsView";
 import { Sidebar, type SidebarFilter } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { useI18n } from "@/lib/i18n";
@@ -23,6 +24,7 @@ import {
 import type { Agent } from "@/types/agent";
 
 function applyFilter(agents: Agent[], f: SidebarFilter): Agent[] {
+  if (f === "marketplace") return [];
   if (f === "all") return agents;
   if (f === "running") {
     return agents.filter((a) => a.runtime.status === "running" || a.runtime.status === "busy");
@@ -59,7 +61,6 @@ export default function App() {
   const [chatConversation, setChatConversation] = useState<string | null>(null);
   const [detailAgent, setDetailAgent] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("general");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const saved = localStorage.getItem("hub.theme");
@@ -100,14 +101,6 @@ export default function App() {
   const handleOpenSettings = () => {
     setChatAgent(null);
     setDetailAgent(null);
-    setSettingsInitialTab("general");
-    setSettingsOpen(true);
-  };
-
-  const handleOpenMarketplace = () => {
-    setChatAgent(null);
-    setDetailAgent(null);
-    setSettingsInitialTab("marketplace");
     setSettingsOpen(true);
   };
 
@@ -146,8 +139,12 @@ export default function App() {
 
   const agents = useMemo(() => sortAgents(Object.values(agentsMap)), [agentsMap]);
 
-  const counts = useMemo<Record<string, number>>(
-    () => ({
+  const counts = useMemo<Record<string, number>>(() => {
+    const marketplaceIds = ["easystt", "openrouter-agent", "cloudru-agent"];
+    const marketplaceInstalled = marketplaceIds.filter((id) =>
+      agents.some((a) => a.manifest.id === id),
+    ).length;
+    return {
       all: agents.length,
       running: agents.filter(
         (a) => a.runtime.status === "running" || a.runtime.status === "busy",
@@ -155,9 +152,9 @@ export default function App() {
       ai: agents.filter((a) => a.manifest.kind === "ai").length,
       utility: agents.filter((a) => a.manifest.kind === "utility").length,
       service: agents.filter((a) => a.manifest.kind === "service").length,
-    }),
-    [agents],
-  );
+      marketplace: marketplaceInstalled,
+    };
+  }, [agents]);
 
   const tagCounts = useMemo<Record<string, number>>(() => {
     const out: Record<string, number> = {};
@@ -243,13 +240,8 @@ export default function App() {
     return (
       <div className="h-screen w-screen overflow-hidden">
         <SettingsView
-          initialTab={settingsInitialTab}
           theme={theme}
           onThemeChange={setTheme}
-          onOpenAgentSettings={(id) => {
-            setSettingsOpen(false);
-            setDetailAgent(id);
-          }}
           onBack={() => setSettingsOpen(false)}
         />
         {palette}
@@ -266,7 +258,7 @@ export default function App() {
         counts={counts}
         tagCounts={tagCounts}
         onOpenPalette={() => setPaletteOpen(true)}
-        onOpenMarketplace={handleOpenMarketplace}
+        onOpenSettings={handleOpenSettings}
       />
 
       <main className="flex-1 flex flex-col min-w-0">
@@ -274,29 +266,35 @@ export default function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           title={
-            filter === "all"
-              ? t("grid.all")
-              : filter === "running"
-                ? t("grid.running")
-                : filter === "ai"
-                  ? t("grid.ai")
-                  : filter.startsWith("tag:")
-                    ? `${t("grid.tagPrefix")}${filter.slice(4)}`
-                    : t("grid.utilities")
+            filter === "marketplace"
+              ? t("sidebar.filter.marketplace")
+              : filter === "all"
+                ? t("grid.all")
+                : filter === "running"
+                  ? t("grid.running")
+                  : filter === "ai"
+                    ? t("grid.ai")
+                    : filter.startsWith("tag:")
+                      ? `${t("grid.tagPrefix")}${filter.slice(4)}`
+                      : t("grid.utilities")
           }
           subtitle={
-            !loaded && !error
-              ? t("grid.subtitle.loading")
-              : t("grid.subtitle.count", {
-                  visible: visible.length,
-                  total: agents.length,
-                })
+            filter === "marketplace"
+              ? t("marketplace.pageSubtitle")
+              : !loaded && !error
+                ? t("grid.subtitle.loading")
+                : t("grid.subtitle.count", {
+                    visible: visible.length,
+                    total: agents.length,
+                  })
           }
           onOpenPalette={() => setPaletteOpen(true)}
         />
 
         <div className="flex-1 overflow-auto p-6">
-          {error ? (
+          {filter === "marketplace" ? (
+            <MarketplaceView onOpenAgentDetail={(id) => setDetailAgent(id)} />
+          ) : error ? (
             <ErrorState message={error} />
           ) : visible.length === 0 ? (
             <EmptyState dir={manifestDir ?? null} loaded={loaded} />

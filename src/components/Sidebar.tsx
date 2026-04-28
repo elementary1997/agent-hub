@@ -1,9 +1,14 @@
-import { Activity, Bot, Hash, Layers, Search, Store, Wrench } from "lucide-react";
+import { Activity, Bot, Cog, Hash, Layers, Search, Store, Wrench } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
 import type { AgentKind } from "@/types/agent";
 
-export type SidebarFilter = "all" | "running" | AgentKind | `tag:${string}`;
+export type SidebarFilter =
+  | "all"
+  | "running"
+  | "marketplace"
+  | AgentKind
+  | `tag:${string}`;
 
 interface FilterMeta {
   id: Exclude<SidebarFilter, `tag:${string}`>;
@@ -16,6 +21,7 @@ const BASE_FILTERS: FilterMeta[] = [
   { id: "running", labelKey: "sidebar.filter.running", icon: Activity },
   { id: "ai", labelKey: "sidebar.filter.ai", icon: Bot },
   { id: "utility", labelKey: "sidebar.filter.utility", icon: Wrench },
+  { id: "marketplace", labelKey: "sidebar.filter.marketplace", icon: Store },
 ];
 
 export interface SidebarProps {
@@ -24,7 +30,7 @@ export interface SidebarProps {
   counts: Record<string, number>;
   tagCounts?: Record<string, number>;
   onOpenPalette?: () => void;
-  onOpenMarketplace?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export function Sidebar({
@@ -33,7 +39,7 @@ export function Sidebar({
   counts,
   tagCounts,
   onOpenPalette,
-  onOpenMarketplace,
+  onOpenSettings,
 }: SidebarProps) {
   const { t } = useI18n();
   const tags = tagCounts
@@ -146,14 +152,14 @@ export function Sidebar({
         </div>
         <button
           type="button"
-          onClick={onOpenMarketplace}
+          onClick={onOpenSettings}
           className={cn(
             "w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm",
             "text-muted hover:text-slate-200 hover:bg-bg-card/40 transition-colors",
           )}
         >
-          <Store size={15} />
-          {t("sidebar.marketplace")}
+          <Cog size={15} />
+          {t("sidebar.settings")}
         </button>
       </div>
     </aside>
