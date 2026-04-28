@@ -20,12 +20,13 @@ export interface AgentManifest {
   tags?: string[];
   accent?: string;
   ai?: {
-    supportsStreaming: boolean;
-    supportsTools?: boolean;
-    supportsAttachments?: ("image" | "audio" | "pdf")[];
-    models: string[];
-    defaultModel: string;
-    systemPromptEditable?: boolean;
+    supports_streaming?: boolean;
+    supports_tools?: boolean;
+    supports_attachments?: ("image" | "audio" | "pdf")[];
+    models?: string[];
+    default_model?: string;
+    system_prompt_editable?: boolean;
+    max_input_tokens?: number;
   };
 }
 

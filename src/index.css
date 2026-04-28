@@ -47,4 +47,19 @@
   .status-dot--idle    { @apply bg-muted; }
   .status-dot--error   { @apply bg-danger; }
   .status-dot--offline { @apply bg-border-strong; }
+
+  .md > * + * { @apply mt-2.5; }
+  .md h1, .md h2, .md h3 { @apply font-semibold text-slate-100 mt-4 mb-1; }
+  .md h1 { @apply text-lg; }
+  .md h2 { @apply text-base; }
+  .md h3 { @apply text-sm uppercase tracking-wider text-muted; }
+  .md ul { @apply list-disc pl-5; }
+  .md ol { @apply list-decimal pl-5; }
+  .md blockquote {
+    @apply border-l-2 border-border-default pl-3 text-muted;
+  }
+  .md table { @apply text-[13px] border-collapse; }
+  .md th, .md td {
+    @apply border border-border-subtle px-2 py-1;
+  }
 }

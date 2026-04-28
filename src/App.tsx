@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { AgentCard } from "@/components/AgentCard";
+import { ChatView } from "@/components/ChatView";
 import { Sidebar, type SidebarFilter } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { useAgentStore } from "@/store/agents";
@@ -43,6 +44,7 @@ export default function App() {
   const setLoaded = useAgentStore((s) => s.setLoaded);
 
   const [filter, setFilter] = useState<SidebarFilter>("all");
+  const [chatAgent, setChatAgent] = useState<string | null>(null);
 
   useEffect(() => {
     let unlistenUp: (() => void) | null = null;
@@ -95,7 +97,13 @@ export default function App() {
 
   const visible = useMemo(() => applyFilter(agents, filter), [agents, filter]);
 
-  const handleOpenNative = (id: string) => {
+  const handleOpenPrimary = (id: string) => {
+    const agent = agentsMap[id];
+    if (!agent) return;
+    if (agent.manifest.kind === "ai") {
+      setChatAgent(id);
+      return;
+    }
     openNative(id).catch((e) => console.error("[hub] open-native-ui failed:", e));
   };
   const handleToggleRun = (id: string) => {
@@ -110,6 +118,14 @@ export default function App() {
       console.warn("[hub] starting managed agents arrives in v0.3");
     }
   };
+
+  if (chatAgent) {
+    return (
+      <div className="h-screen w-screen overflow-hidden">
+        <ChatView agentId={chatAgent} onBack={() => setChatAgent(null)} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
@@ -145,7 +161,7 @@ export default function App() {
                   <AgentCard
                     key={agent.manifest.id}
                     agent={agent}
-                    onOpenNative={handleOpenNative}
+                    onOpenNative={handleOpenPrimary}
                     onOpenSettings={(id) => console.log("settings UI lands in v0.4 →", id)}
                     onToggleRun={handleToggleRun}
                   />

@@ -23,23 +23,35 @@ End state achieved (commits b1d0000 → 771ddc4 → v0.1.2): hub picks up easyST
 and the echo-agent automatically, busy state flips instantly via WS, "Open"
 button raises easySTT's settings window. Round trip works.
 
-## v0.2 — AI agent v1 (target: 2 weeks)
+## v0.2 — AI agent v1
 
 Goal: a real chat with an AI agent inside the hub.
 
-- [ ] SQLite via `tauri-plugin-sql` for `conversations`, `messages`
-- [ ] Chat view inside the agent detail page:
-  - [ ] Message list with markdown + code blocks
-  - [ ] SSE streaming, smooth deltas (no flicker)
-  - [ ] Model picker (driven by `ai.models` from manifest)
-  - [ ] System prompt editor (collapsible)
-  - [ ] Image / file attachments (where `supports_attachments` allows)
+### v0.2.0 — Chat MVP (shipped)
+
+- [x] Rust SSE client over reqwest with framing for `data:` events
+- [x] Tauri commands: list / create / get / delete / patch conversations
+- [x] `chat_send_message` streams `chat-stream` events (`requestId` per call,
+      type-routed: `start` / `delta` / `tool_call` / `tool_result` / `end` / `error`)
+- [x] `<ChatView/>`: conversations rail + composer + streaming bubble
+- [x] Markdown rendering with `react-markdown` + GFM + `rehype-highlight`
+- [x] System prompt editor (collapsible) when manifest declares
+      `system_prompt_editable: true`
+- [x] Model picker (driven by `ai.models`)
+- [x] Conversation list / rename (via system prompt save) / delete
+
+### v0.2.1 — Persistence + reference adapter (next)
+
+- [ ] SQLite via `tauri-plugin-sql` for local cache of `conversations` /
+      `messages` so chat survives agent restarts
+- [ ] Conversation search (FTS5)
+- [ ] Image / audio attachments where `supports_attachments` allows
 - [ ] **Reference AI agent** — thin adapter over Cloud.ru / OpenRouter
       (re-uses keys already configured in easySTT). Implements
       `kind: "ai"` contract end-to-end. ~400 LoC, separate repo.
-- [ ] Conversation list, rename, delete, search
 
-End state: open hub → click AI agent → start a chat → tokens stream in.
+End state (after v0.2.1): open hub → click AI agent → start a chat →
+tokens stream in, history survives restarts.
 
 ## v0.3 — Process Manager + Settings (target: 1 week)
 

@@ -1,5 +1,14 @@
 import { motion } from "framer-motion";
-import { ExternalLink, Settings, Square, Play, Bot, Mic, Wrench } from "lucide-react";
+import {
+  Bot,
+  ExternalLink,
+  MessageSquare,
+  Mic,
+  Play,
+  Settings,
+  Square,
+  Wrench,
+} from "lucide-react";
 import type { Agent, AgentKind, AgentStatus } from "@/types/agent";
 import { cn } from "@/lib/cn";
 
@@ -49,6 +58,9 @@ export function AgentCard({ agent, onOpenNative, onOpenSettings, onToggleRun }: 
   const accent = manifest.accent ?? "#7c5cff";
   const isRunning = runtime.status === "running" || runtime.status === "busy";
   const canToggle = manifest.lifecycle === "managed";
+  const isAi = manifest.kind === "ai";
+  const PrimaryIcon = isAi ? MessageSquare : ExternalLink;
+  const primaryLabel = isAi ? "Chat" : "Open";
 
   return (
     <motion.div
@@ -153,8 +165,8 @@ export function AgentCard({ agent, onOpenNative, onOpenSettings, onToggleRun }: 
             background: `${accent}11`,
           }}
         >
-          <ExternalLink size={12} />
-          Open
+          <PrimaryIcon size={12} />
+          {primaryLabel}
         </button>
       </div>
     </motion.div>

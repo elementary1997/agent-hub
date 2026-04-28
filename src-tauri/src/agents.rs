@@ -152,6 +152,13 @@ impl Registry {
             .get(id)
             .map(|r| r.manifest.endpoint.clone())
     }
+
+    /// Shared reqwest client for chat / SSE / one-off API calls. Reusing the
+    /// same connection pool everywhere avoids hammering 127.0.0.1 with
+    /// fresh TCP handshakes per request.
+    pub fn http_client(&self) -> &reqwest::Client {
+        &self.http
+    }
 }
 
 // ─── Bootstrapping ─────────────────────────────────────────────────────────

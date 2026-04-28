@@ -10,6 +10,7 @@
 //! supervisor land in v0.1.2 / v0.3 — see ROADMAP.md.
 
 mod agents;
+mod chat;
 
 use tauri::Manager;
 
@@ -44,6 +45,12 @@ pub fn run() {
             agents::agent_open_native,
             agents::agent_quit,
             agents::agents_dir,
+            chat::chat_list_conversations,
+            chat::chat_create_conversation,
+            chat::chat_get_conversation,
+            chat::chat_delete_conversation,
+            chat::chat_patch_conversation,
+            chat::chat_send_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agent Hub");
