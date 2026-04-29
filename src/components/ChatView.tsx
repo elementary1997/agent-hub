@@ -104,6 +104,7 @@ export function ChatView({
   initialDraftToken,
   initialAutoSubmitToken,
 }: ChatViewProps) {
+  const modelStorageKey = `hub.chat.selectedModel.${agentId}`;
   const agent = useAgentStore((s) => s.agents[agentId]);
   const agentsMap = useAgentStore((s) => s.agents);
   const aiAgents = useMemo(
@@ -136,6 +137,7 @@ export function ChatView({
 
   const streamRef = useRef<StreamState | null>(null);
   const autoSubmitTokenRef = useRef<number | null>(null);
+  const sendLockRef = useRef(false);
   streamRef.current = stream;
 
   const accent = agent?.manifest.accent ?? "#7c5cff";
@@ -253,6 +255,7 @@ export function ChatView({
         setStream({ ...cur, buffer: cur.buffer + text });
       } else if (e.type === "end") {
         setStream({ ...cur, finished: true });
+        sendLockRef.current = false;
         getConversation(agentId, cur.conversationId)
           .then((c) => setActive(c))
           .catch(() => {});
@@ -261,6 +264,7 @@ export function ChatView({
       } else if (e.type === "error") {
         const msg = (e.data as { message?: string } | undefined)?.message ?? "stream error";
         setStream({ ...cur, error: msg, finished: true });
+        sendLockRef.current = false;
       } else if (e.type === "start") {
         // hub already accepts deltas without start; keep for tools / metadata
       }
@@ -275,6 +279,21 @@ export function ChatView({
       setModel(models[0] ?? null);
     }
   }, [model, models]);
+
+  useEffect(() => {
+    if (models.length === 0) return;
+    const stored = localStorage.getItem(modelStorageKey);
+    if (stored && models.includes(stored)) {
+      setModel(stored);
+      return;
+    }
+    if (!model && models[0]) setModel(models[0]);
+  }, [models, modelStorageKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!model) return;
+    localStorage.setItem(modelStorageKey, model);
+  }, [model, modelStorageKey]);
 
   const handleNew = useCallback(async () => {
     try {
@@ -301,8 +320,13 @@ export function ChatView({
 
   const handleSend = useCallback(async () => {
     if ((!draft.trim() && attachments.length === 0) || stream || !active) return;
+    if (sendLockRef.current) return;
+    sendLockRef.current = true;
     let convId = active.id;
-    if (!convId) return;
+    if (!convId) {
+      sendLockRef.current = false;
+      return;
+    }
     const requestId = makeRequestId();
     const outgoingParts: ContentPart[] = [
       ...(draft.trim() ? asTextPart(draft.trim()) : []),
@@ -336,8 +360,11 @@ export function ChatView({
         model: model && models.includes(model) ? model : undefined,
       });
     } catch (e) {
+      const msg = String(e ?? "");
+      if (/read sse chunk/i.test(msg)) return;
+      sendLockRef.current = false;
       setStream(null);
-      setError(String(e));
+      setError(msg);
     }
   }, [agentId, active, attachments, draft, model, stream]);
 

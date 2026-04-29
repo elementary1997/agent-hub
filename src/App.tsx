@@ -118,6 +118,7 @@ export default function App() {
   const [voiceAutoSend, setVoiceAutoSend] = useState<boolean>(
     () => localStorage.getItem(VOICE_AUTO_SEND_KEY) === "1",
   );
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false);
   const agentsMapRef = useRef(agentsMap);
   const voiceAutoSendRef = useRef(voiceAutoSend);
 
@@ -335,6 +336,7 @@ export default function App() {
     (chatAgent && agentsMap[chatAgent]?.manifest.kind === "ai" ? chatAgent : null) ??
     aiAgents[0]?.manifest.id ??
     null;
+  const hasEasyStt = Boolean(agentsMap.easystt);
 
   const handleOpenPrimary = (id: string) => {
     const agent = agentsMap[id];
@@ -376,10 +378,14 @@ export default function App() {
   );
   const voiceBar = (
     <VoiceTranscriptBar
+      open={voicePanelOpen}
       value={voiceTranscript?.text ?? null}
       autoSend={voiceAutoSend}
       onToggleAutoSend={() => setVoiceAutoSend((v) => !v)}
-      onDismiss={() => setVoiceTranscript(null)}
+      onDismiss={() => {
+        setVoiceTranscript(null);
+        setVoicePanelOpen(false);
+      }}
       onUseInChat={() => {
         const text = voiceTranscript?.text?.trim();
         if (!text) return;
@@ -450,6 +456,15 @@ export default function App() {
     <div className="flex h-screen w-screen overflow-hidden">
       {palette}
       {voiceBar}
+      {hasEasyStt && (
+        <button
+          type="button"
+          onClick={() => setVoicePanelOpen((v) => !v)}
+          className="fixed right-4 bottom-4 z-30 text-xs px-3 py-2 rounded-lg border border-border-subtle bg-bg-card/90 text-muted hover:text-slate-100 hover:border-border-default transition-colors"
+        >
+          {t("voicebar.open")}
+        </button>
+      )}
       <Sidebar
         filter={filter}
         onFilterChange={setFilter}
@@ -563,12 +578,14 @@ function extractVoiceTranscriptText(event: { agentId: string; type: string; data
 }
 
 function VoiceTranscriptBar({
+  open,
   value,
   autoSend,
   onToggleAutoSend,
   onUseInChat,
   onDismiss,
 }: {
+  open: boolean;
   value: string | null;
   autoSend: boolean;
   onToggleAutoSend: () => void;
@@ -576,7 +593,7 @@ function VoiceTranscriptBar({
   onDismiss: () => void;
 }) {
   const { t } = useI18n();
-  if (!value) return null;
+  if (!open && !value) return null;
   return (
     <div className="fixed bottom-4 right-4 z-40 w-[min(560px,calc(100vw-2rem))] rounded-xl border border-border-default bg-bg-card/95 backdrop-blur p-3 shadow-card">
       <div className="flex items-center justify-between gap-2 mb-2">
@@ -585,7 +602,7 @@ function VoiceTranscriptBar({
         </div>
       </div>
       <div className="text-sm text-slate-100 bg-bg-elev/60 rounded-lg border border-border-subtle px-2.5 py-2 mb-2 max-h-28 overflow-auto whitespace-pre-wrap break-words">
-        {value}
+        {value ?? t("voicebar.noTranscript")}
       </div>
       <div className="flex items-center justify-between gap-2">
         <button
