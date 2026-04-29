@@ -126,6 +126,9 @@ export function ChatView({
 
   const accent = agent?.manifest.accent ?? "#7c5cff";
   const ai = agent?.manifest.ai;
+  const attachmentKinds = Array.isArray(ai?.supports_attachments)
+    ? ai.supports_attachments
+    : [];
   const cachedProviderModels = useMemo(() => {
     if (!agent) return [] as string[];
     try {
@@ -323,16 +326,16 @@ export function ChatView({
     autoSubmitTokenRef.current = null;
     void handleSend();
   }, [active, draft, stream, handleSend]);
-  const supportsAttachments = (ai?.supports_attachments ?? []).length > 0;
+  const supportsAttachments = attachmentKinds.length > 0;
 
   const handlePickAttachment = useCallback(async () => {
     if (!supportsAttachments || attaching) return;
     const input = document.createElement("input");
     input.type = "file";
     input.accept = [
-      ai?.supports_attachments?.includes("image") ? "image/*" : "",
-      ai?.supports_attachments?.includes("audio") ? "audio/*" : "",
-      ai?.supports_attachments?.includes("pdf") ? "application/pdf" : "",
+      attachmentKinds.includes("image") ? "image/*" : "",
+      attachmentKinds.includes("audio") ? "audio/*" : "",
+      attachmentKinds.includes("pdf") ? "application/pdf" : "",
     ]
       .filter(Boolean)
       .join(",");
@@ -344,7 +347,7 @@ export function ChatView({
         : file.type.startsWith("audio/")
           ? "audio"
           : "pdf";
-      if (!(ai?.supports_attachments ?? []).includes(kind)) {
+      if (!attachmentKinds.includes(kind)) {
         setError(`This agent does not support ${kind} attachments.`);
         return;
       }
@@ -375,7 +378,7 @@ export function ChatView({
       }
     };
     input.click();
-  }, [agentId, ai?.supports_attachments, attaching, supportsAttachments]);
+  }, [agentId, attachmentKinds, attaching, supportsAttachments]);
 
 
   const handleSavePrompt = useCallback(async () => {

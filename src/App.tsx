@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence } from "framer-motion";
 import { AgentCard } from "@/components/AgentCard";
 import { AgentDetail } from "@/components/AgentDetail";
@@ -29,6 +29,45 @@ import {
   stopManagedAgent,
 } from "@/lib/api";
 import type { Agent } from "@/types/agent";
+
+class ChatErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; message: string }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, message: "" };
+  }
+
+  static getDerivedStateFromError(error: unknown) {
+    return { hasError: true, message: String(error) };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("[chat] render crash:", error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-full grid place-items-center px-6 text-center">
+          <div className="max-w-xl rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+            <div className="font-medium text-red-300 mb-1">Chat crashed while rendering.</div>
+            <div className="text-xs text-muted break-words">{this.state.message}</div>
+            <button
+              type="button"
+              onClick={() => this.setState({ hasError: false, message: "" })}
+              className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function applyFilter(agents: Agent[], f: SidebarFilter): Agent[] {
   if (f === "marketplace") return [];
@@ -352,29 +391,31 @@ export default function App() {
   if (chatAgent && filter !== "ai") {
     return (
       <div className="h-screen w-screen overflow-hidden">
-        <ChatView
-          agentId={chatAgent}
-          onSwitchAgent={handleSwitchChatAgent}
-          onOpenProviderSettings={(id) => {
-            setChatAgent(null);
-            setChatConversation(null);
-            setChatDraft(null);
-            setChatDraftToken(null);
-            setChatAutoSubmitToken(null);
-            setDetailAgent(id);
-          }}
-          initialConversationId={chatConversation}
-          initialDraft={chatDraft}
-          initialDraftToken={chatDraftToken}
-          initialAutoSubmitToken={chatAutoSubmitToken}
-          onBack={() => {
-            setChatAgent(null);
-            setChatConversation(null);
-            setChatDraft(null);
-            setChatDraftToken(null);
-            setChatAutoSubmitToken(null);
-          }}
-        />
+        <ChatErrorBoundary>
+          <ChatView
+            agentId={chatAgent}
+            onSwitchAgent={handleSwitchChatAgent}
+            onOpenProviderSettings={(id) => {
+              setChatAgent(null);
+              setChatConversation(null);
+              setChatDraft(null);
+              setChatDraftToken(null);
+              setChatAutoSubmitToken(null);
+              setDetailAgent(id);
+            }}
+            initialConversationId={chatConversation}
+            initialDraft={chatDraft}
+            initialDraftToken={chatDraftToken}
+            initialAutoSubmitToken={chatAutoSubmitToken}
+            onBack={() => {
+              setChatAgent(null);
+              setChatConversation(null);
+              setChatDraft(null);
+              setChatDraftToken(null);
+              setChatAutoSubmitToken(null);
+            }}
+          />
+        </ChatErrorBoundary>
         {palette}
         {voiceBar}
       </div>
@@ -456,12 +497,14 @@ export default function App() {
           ) : filter === "ai" ? (
             aiTabAgentId ? (
               <div className="h-full min-h-[calc(100vh-9rem)] -m-6">
-                <ChatView
-                  agentId={aiTabAgentId}
-                  onSwitchAgent={handleSwitchChatAgent}
-                  onOpenProviderSettings={(id) => setDetailAgent(id)}
-                  onBack={() => setFilter("all")}
-                />
+                <ChatErrorBoundary>
+                  <ChatView
+                    agentId={aiTabAgentId}
+                    onSwitchAgent={handleSwitchChatAgent}
+                    onOpenProviderSettings={(id) => setDetailAgent(id)}
+                    onBack={() => setFilter("all")}
+                  />
+                </ChatErrorBoundary>
               </div>
             ) : (
               <div className="h-full grid place-items-center text-sm text-muted">
