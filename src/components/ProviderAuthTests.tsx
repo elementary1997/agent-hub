@@ -23,10 +23,12 @@ export function ProviderAuthTests({
   agentId,
   endpoint,
   config,
+  onModelsLoaded,
 }: {
   agentId: string;
   endpoint: string;
   config: Record<string, unknown>;
+  onModelsLoaded?: (models: string[]) => void;
 }) {
   const base = endpoint.replace(/\/$/, "");
   const showOpenRouter = agentId === "openrouter-agent";
@@ -61,7 +63,10 @@ export function ProviderAuthTests({
               setOrLoading(true);
               setOrOut(null);
               postTest(`${base}/test/openrouter`)
-                .then(setOrOut)
+                .then((out) => {
+                  setOrOut(out);
+                  if (out.ok && out.models?.length) onModelsLoaded?.(out.models);
+                })
                 .catch((e) => setOrOut({ ok: false, error: String(e) }))
                 .finally(() => setOrLoading(false));
             }}
@@ -91,7 +96,10 @@ export function ProviderAuthTests({
               setCrLoading(true);
               setCrOut(null);
               postTest(`${base}/test/cloudru`)
-                .then(setCrOut)
+                .then((out) => {
+                  setCrOut(out);
+                  if (out.ok && out.models?.length) onModelsLoaded?.(out.models);
+                })
                 .catch((e) => setCrOut({ ok: false, error: String(e) }))
                 .finally(() => setCrLoading(false));
             }}
@@ -125,17 +133,12 @@ function TestResultView({ result }: { result: ProviderTestResult | null }) {
     );
   }
   const models = result.models ?? [];
-  if (models.length === 0) {
-    return <div className="text-xs text-muted">OK, but no models in response.</div>;
-  }
   return (
-    <ul className="max-h-40 overflow-auto rounded-lg border border-border-subtle bg-bg-elev/50 p-2 text-[11px] font-mono space-y-0.5">
-      {models.map((m) => (
-        <li key={m} className="text-slate-200">
-          {m}
-        </li>
-      ))}
-    </ul>
+    <div className="text-xs text-emerald-300 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2">
+      {models.length > 0
+        ? `Authorization OK. Loaded ${models.length} model(s) into Default model list.`
+        : "Authorization OK, but no models returned."}
+    </div>
   );
 }
 

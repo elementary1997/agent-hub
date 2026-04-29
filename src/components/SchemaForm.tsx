@@ -158,19 +158,7 @@ function FieldInput({ property, value, onChange }: Omit<FieldProps, "name">) {
   }
 
   if (property.type === "integer" || property.type === "number") {
-    return (
-      <input
-        type="number"
-        value={value === undefined || value === null ? "" : String(value)}
-        min={property.minimum}
-        max={property.maximum}
-        onChange={(e) => {
-          const next = e.target.value === "" ? null : Number(e.target.value);
-          onChange(next);
-        }}
-        className="w-full bg-bg-elev border border-border-subtle rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-border-default"
-      />
-    );
+    return <NumericInput property={property} value={value} onChange={onChange} />;
   }
 
   // string / fallback
@@ -204,6 +192,45 @@ function FieldInput({ property, value, onChange }: Omit<FieldProps, "name">) {
       value={stringValue}
       maxLength={property.maxLength}
       onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-bg-elev border border-border-subtle rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-border-default"
+    />
+  );
+}
+
+function NumericInput({
+  property,
+  value,
+  onChange,
+}: {
+  property: AgentConfigProperty;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const [raw, setRaw] = useState(value == null ? "" : String(value));
+
+  useEffect(() => {
+    setRaw(value == null ? "" : String(value));
+  }, [value]);
+
+  const isInteger = property.type === "integer";
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={raw}
+      onChange={(e) => {
+        const nextRaw = e.target.value.replace(",", ".");
+        setRaw(nextRaw);
+        if (nextRaw.trim() === "") {
+          onChange(null);
+          return;
+        }
+        if (/^-?\d*\.?\d*$/.test(nextRaw)) {
+          const parsed = isInteger ? parseInt(nextRaw, 10) : Number(nextRaw);
+          if (Number.isFinite(parsed)) onChange(parsed);
+        }
+      }}
       className="w-full bg-bg-elev border border-border-subtle rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-border-default"
     />
   );

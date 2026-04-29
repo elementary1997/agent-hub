@@ -46,6 +46,7 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
   const [cloudRuRemoving, setCloudRuRemoving] = useState(false);
 
   const [installingEasystt, setInstallingEasystt] = useState(false);
+  const [removingEasystt, setRemovingEasystt] = useState(false);
   const [easysttMsg, setEasysttMsg] = useState<string | null>(null);
   const [easysttDetected, setEasysttDetected] = useState(false);
 
@@ -192,6 +193,22 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
     }
   };
 
+  const onUninstallEasystt = async () => {
+    if (!easysttManifest || removingEasystt) return;
+    const ok = window.confirm("Remove easySTT integration from this computer?");
+    if (!ok) return;
+    setRemovingEasystt(true);
+    setEasysttMsg(null);
+    try {
+      await uninstallAgentLocal("easystt");
+      setEasysttMsg("easySTT integration removed from hub.");
+    } catch (e) {
+      setEasysttMsg(`Remove failed: ${String(e)}`);
+    } finally {
+      setRemovingEasystt(false);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <Section icon={Sparkles} title={t("marketplace.section")}>
@@ -220,23 +237,40 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
                 </div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void onInstallEasystt()}
-              disabled={installingEasystt}
-              className={cn(
-                "inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
-                "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
-                installingEasystt && "opacity-60 cursor-not-allowed",
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void onInstallEasystt()}
+                disabled={installingEasystt}
+                className={cn(
+                  "inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                  "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
+                  installingEasystt && "opacity-60 cursor-not-allowed",
+                )}
+              >
+                <Download size={12} className={installingEasystt ? "animate-pulse" : ""} />
+                {installingEasystt
+                  ? t("marketplace.easystt.installing")
+                  : easysttOk
+                    ? t("marketplace.repair")
+                    : t("marketplace.easystt.install")}
+              </button>
+              {easysttManifest && (
+                <button
+                  type="button"
+                  onClick={onUninstallEasystt}
+                  disabled={removingEasystt}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                    "border-red-500/30 text-red-300 hover:bg-red-500/10",
+                    removingEasystt && "opacity-60 cursor-not-allowed",
+                  )}
+                >
+                  <Trash2 size={12} />
+                  {removingEasystt ? t("marketplace.uninstalling") : t("marketplace.remove")}
+                </button>
               )}
-            >
-              <Download size={12} className={installingEasystt ? "animate-pulse" : ""} />
-              {installingEasystt
-                ? t("marketplace.easystt.installing")
-                : easysttOk
-                  ? t("marketplace.repair")
-                  : t("marketplace.easystt.install")}
-            </button>
+            </div>
             <div className="text-[11px]">
               <span className="text-muted">{t("ai.statusLabel")}: </span>
               <span

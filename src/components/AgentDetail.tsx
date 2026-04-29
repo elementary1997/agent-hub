@@ -60,6 +60,7 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
   const [savingConfig, setSavingConfig] = useState(false);
   const [actionPending, setActionPending] = useState(false);
   const [autoStart, setAutoStartState] = useState<AutoStartView | null>(null);
+  const [providerModels, setProviderModels] = useState<string[]>([]);
 
   const accent = agent?.manifest.accent ?? "#7c5cff";
   const isAi = agent?.manifest.kind === "ai";
@@ -200,9 +201,17 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
     () => (config?.config as Record<string, unknown> | undefined) ?? {},
     [config],
   );
+  const effectiveInitialConfig = useMemo(() => {
+    if (agentId !== "cloudru-agent") return initialConfig;
+    const model = initialConfig.default_model;
+    if (typeof model === "string" && model.startsWith("anthropic/")) {
+      return { ...initialConfig, default_model: "gigachat-preview" };
+    }
+    return initialConfig;
+  }, [agentId, initialConfig]);
   const effectiveSchema = useMemo(
-    () => normalizeConfigSchema(agentId, config?.schema),
-    [agentId, config?.schema],
+    () => normalizeConfigSchema(agentId, config?.schema, providerModels),
+    [agentId, config?.schema, providerModels],
   );
   const configUnsupported =
     !!configError && /\b404\b|not found/i.test(configError);
@@ -333,7 +342,8 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
                   <ProviderAuthTests
                     agentId={agentId}
                     endpoint={agent.manifest.endpoint}
-                    config={initialConfig}
+                    config={effectiveInitialConfig}
+                    onModelsLoaded={(models) => setProviderModels(models)}
                   />
                 </div>
               )}
@@ -358,7 +368,7 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
                 <>
                   <SchemaForm
                     schema={effectiveSchema}
-                    initial={initialConfig}
+                    initial={effectiveInitialConfig}
                     onSubmit={handleSaveConfig}
                     busy={savingConfig}
                   />
@@ -396,6 +406,7 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
 function normalizeConfigSchema(
   agentId: string,
   schema?: AgentConfigSchema,
+  providerModels: string[] = [],
 ): AgentConfigSchema | undefined {
   if (!schema) return schema;
   if (agentId !== "openrouter-agent" && agentId !== "cloudru-agent") return schema;
@@ -431,6 +442,14 @@ function normalizeConfigSchema(
       description: `API key or Bearer token. Leave ${SECRET_MASK} to keep the saved key.`,
     };
     delete properties.cloudru_key_id;
+  }
+
+  if (providerModels.length > 0) {
+    properties.default_model = {
+      ...(properties.default_model ?? { type: "string" }),
+      enum: providerModels,
+      description: "Choose from models discovered by Provider checks.",
+    };
   }
 
   return { ...schema, properties };

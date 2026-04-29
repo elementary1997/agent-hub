@@ -115,6 +115,18 @@ fn patch_server_js(src: &str) -> String {
         "provider: process.env.CLOUD_BRIDGE_PROVIDER ?? \"openrouter\",",
         "provider: process.env.CLOUD_BRIDGE_PROVIDER ?? \"cloudru\",",
     )
+    .replace(
+        r#"const DEFAULT_MODELS = [
+  "anthropic/claude-sonnet-4.5",
+  "anthropic/claude-3.5-sonnet",
+  "openai/gpt-4o-mini",
+  "openai/gpt-4o",
+  "google/gemini-2.5-pro",
+  "deepseek/deepseek-chat",
+  "meta-llama/llama-3.3-70b-instruct",
+];"#,
+        r#"const DEFAULT_MODELS = ["gigachat-preview"];"#,
+    )
     .replace("auto_start_on_hub_launch: true,", "auto_start_on_hub_launch: false,")
 }
 
