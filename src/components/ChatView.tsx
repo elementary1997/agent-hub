@@ -268,7 +268,9 @@ export function ChatView({
         setStream(null);
       } else if (e.type === "error") {
         const msg = (e.data as { message?: string } | undefined)?.message ?? "stream error";
-        setError(msg);
+        if (!/read sse chunk/i.test(msg)) {
+          setError(msg);
+        }
         setStream(null);
         sendLockRef.current = false;
       } else if (e.type === "start") {
@@ -368,7 +370,11 @@ export function ChatView({
     } catch (e) {
       const msg = String(e ?? "");
       if (/read sse chunk/i.test(msg)) {
-        setError("Connection interrupted while streaming. Please retry.");
+        const cur = streamRef.current;
+        // If we already received some tokens, treat this as a benign stream tear-down.
+        if (!cur || cur.requestId !== requestId || cur.buffer.length === 0) {
+          setError("Connection interrupted while streaming. Please retry.");
+        }
         setStream(null);
         sendLockRef.current = false;
         return;

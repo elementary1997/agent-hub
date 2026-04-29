@@ -131,3 +131,10 @@
 :root[data-theme="light"] .text-red-300 {
   color: #a82a40 !important;
 }
+:root[data-theme="light"] .text-muted {
+  color: #334155 !important;
+}
+:root[data-theme="light"] .text-muted\/70,
+:root[data-theme="light"] .text-muted\/80 {
+  color: #475569 !important;
+}
