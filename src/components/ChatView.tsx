@@ -64,12 +64,26 @@ interface StreamState {
   error: string | null;
 }
 
-function partsToText(content: ChatMessage["content"]): string {
+function partsToText(content: ChatMessage["content"] | unknown): string {
   if (typeof content === "string") return content;
-  return content
-    .map((p) => (p.type === "text" ? p.text : `[${p.type} attachment]`))
-    .join("\n")
-    .trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((p) =>
+        p && typeof p === "object" && "type" in p && (p as { type?: string }).type === "text"
+          ? String((p as { text?: unknown }).text ?? "")
+          : `[${String((p as { type?: unknown })?.type ?? "attachment")} attachment]`,
+      )
+      .join("\n")
+      .trim();
+  }
+  if (content && typeof content === "object") {
+    const obj = content as Record<string, unknown>;
+    if (typeof obj.text === "string") return obj.text;
+    if (typeof obj.content === "string") return obj.content;
+    if (Array.isArray(obj.content)) return partsToText(obj.content);
+    if (typeof obj.delta === "string") return obj.delta;
+  }
+  return String(content ?? "").trim();
 }
 
 function asTextPart(text: string): ContentPart[] {
@@ -141,7 +155,13 @@ export function ChatView({
       return [] as string[];
     }
   }, [agent]);
-  const models = cachedProviderModels.length > 0 ? cachedProviderModels : (ai?.models ?? []);
+  const models = useMemo(
+    () =>
+      (cachedProviderModels.length > 0 ? cachedProviderModels : ai?.models)?.filter(
+        (m): m is string => typeof m === "string" && m.trim().length > 0,
+      ) ?? [],
+    [cachedProviderModels, ai?.models],
+  );
 
   const refreshList = useCallback(async () => {
     setConversationsLoading(true);
@@ -210,7 +230,8 @@ export function ChatView({
           if (!model && ai?.default_model && models.includes(ai.default_model)) {
             setModel(ai.default_model);
           }
-          if (!model && c.messages.length === 0 && models[0]) setModel(models[0]);
+          const messageCount = Array.isArray(c.messages) ? c.messages.length : 0;
+          if (!model && messageCount === 0 && models[0]) setModel(models[0]);
         }
       })
       .catch((e) => {
@@ -294,7 +315,8 @@ export function ChatView({
       content: outgoingParts,
       at: new Date().toISOString(),
     };
-    setActive({ ...active, messages: [...active.messages, userMsg] });
+    const existingMessages = Array.isArray(active.messages) ? active.messages : [];
+    setActive({ ...active, messages: [...existingMessages, userMsg] });
     setStream({
       requestId,
       conversationId: convId,
@@ -396,14 +418,15 @@ export function ChatView({
 
   const messagesForDisplay = useMemo(() => {
     if (!active) return [] as ChatMessage[];
-    if (!stream) return active.messages;
+    const safeMessages = Array.isArray(active.messages) ? active.messages : [];
+    if (!stream) return safeMessages;
     const ghost: ChatMessage = {
       id: `streaming_${stream.requestId}`,
       role: "assistant",
       content: asTextPart(stream.buffer || (stream.error ? `⚠ ${stream.error}` : "")),
       at: new Date().toISOString(),
     };
-    return [...active.messages, ghost];
+    return [...safeMessages, ghost];
   }, [active, stream]);
 
   if (!agent) {
@@ -466,7 +489,7 @@ export function ChatView({
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] truncate">{c.title || "Untitled"}</div>
                     <div className="text-[10px] text-muted truncate">
-                      {c.message_count ?? c.messages.length} messages
+                      {c.message_count ?? (Array.isArray(c.messages) ? c.messages.length : 0)} messages
                     </div>
                   </div>
                   <button
@@ -497,7 +520,7 @@ export function ChatView({
             </div>
             <div className="text-[11px] text-muted">
               {active
-                ? `${active.messages.length} messages · ${agent.manifest.kind === "ai" ? "AI" : agent.manifest.kind}`
+                ? `${Array.isArray(active.messages) ? active.messages.length : 0} messages · ${agent.manifest.kind === "ai" ? "AI" : agent.manifest.kind}`
                 : "or start a new one →"}
             </div>
           </div>
