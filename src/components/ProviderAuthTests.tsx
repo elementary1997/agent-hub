@@ -4,24 +4,35 @@ import { cn } from "@/lib/cn";
 import type { ProviderTestResult } from "@/lib/api";
 
 async function postTest(url: string): Promise<ProviderTestResult> {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-  return r.json() as Promise<ProviderTestResult>;
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      signal: ctrl.signal,
+    });
+    return r.json() as Promise<ProviderTestResult>;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 export function ProviderAuthTests({
   agentId,
   endpoint,
+  config,
 }: {
   agentId: string;
   endpoint: string;
+  config: Record<string, unknown>;
 }) {
   const base = endpoint.replace(/\/$/, "");
   const showOpenRouter = agentId === "openrouter-agent";
   const showCloudRu = agentId === "cloudru-agent";
+  const hasOpenRouterKey = hasSecret(config.openrouter_api_key);
+  const hasCloudRuKey = hasSecret(config.cloudru_api_key);
 
   const [orLoading, setOrLoading] = useState(false);
   const [crLoading, setCrLoading] = useState(false);
@@ -45,7 +56,7 @@ export function ProviderAuthTests({
         <div className="space-y-2">
           <button
             type="button"
-            disabled={orLoading}
+            disabled={orLoading || !hasOpenRouterKey}
             onClick={() => {
               setOrLoading(true);
               setOrOut(null);
@@ -57,11 +68,16 @@ export function ProviderAuthTests({
             className={cn(
               "inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border transition-colors",
               "border-border-subtle hover:border-border-default text-muted hover:text-slate-100",
-              orLoading && "opacity-60 cursor-not-allowed",
+              (orLoading || !hasOpenRouterKey) && "opacity-60 cursor-not-allowed",
             )}
           >
             {orLoading ? "Testing…" : "Test OpenRouter authorization"}
           </button>
+          {!hasOpenRouterKey && (
+            <div className="text-[11px] text-amber-400">
+              Enter and save `OPENROUTER_API_KEY` first.
+            </div>
+          )}
           <TestResultView result={orOut} />
         </div>
       )}
@@ -70,7 +86,7 @@ export function ProviderAuthTests({
         <div className="space-y-2">
           <button
             type="button"
-            disabled={crLoading}
+            disabled={crLoading || !hasCloudRuKey}
             onClick={() => {
               setCrLoading(true);
               setCrOut(null);
@@ -82,11 +98,16 @@ export function ProviderAuthTests({
             className={cn(
               "inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border transition-colors",
               "border-border-subtle hover:border-border-default text-muted hover:text-slate-100",
-              crLoading && "opacity-60 cursor-not-allowed",
+              (crLoading || !hasCloudRuKey) && "opacity-60 cursor-not-allowed",
             )}
           >
             {crLoading ? "Testing…" : "Test Cloud.ru authorization"}
           </button>
+          {!hasCloudRuKey && (
+            <div className="text-[11px] text-amber-400">
+              Enter and save `CLOUDRU_BEARER` first.
+            </div>
+          )}
           <TestResultView result={crOut} />
         </div>
       )}
@@ -116,4 +137,8 @@ function TestResultView({ result }: { result: ProviderTestResult | null }) {
       ))}
     </ul>
   );
+}
+
+function hasSecret(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }

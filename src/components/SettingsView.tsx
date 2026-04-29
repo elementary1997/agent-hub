@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import {
   ArrowLeft,
   Database,
@@ -317,18 +316,13 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18 }}
-      className="rounded-2xl border border-border-subtle bg-bg-card/60 overflow-hidden"
-    >
+    <section className="rounded-2xl border border-border-subtle bg-bg-card/60 overflow-hidden">
       <div className="px-4 py-3 border-b border-border-subtle/60 flex items-center gap-2 text-sm">
         <Icon size={14} className="text-muted" />
         <span className="font-medium">{title}</span>
       </div>
       <div className="px-4 py-3 space-y-2">{children}</div>
-    </motion.section>
+    </section>
   );
 }
 

@@ -333,6 +333,7 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
                   <ProviderAuthTests
                     agentId={agentId}
                     endpoint={agent.manifest.endpoint}
+                    config={initialConfig}
                   />
                 </div>
               )}
@@ -429,11 +430,7 @@ function normalizeConfigSchema(
       title: "Cloud.ru API key / bearer",
       description: `API key or Bearer token. Leave ${SECRET_MASK} to keep the saved key.`,
     };
-    properties.cloudru_key_id ??= {
-      type: "string",
-      title: "Cloud.ru Key ID",
-      description: "Optional: set when using key-id/key-secret flow.",
-    };
+    delete properties.cloudru_key_id;
   }
 
   return { ...schema, properties };

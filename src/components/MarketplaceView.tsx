@@ -3,9 +3,11 @@ import { motion } from "framer-motion";
 import {
   Download,
   Hash,
-  Power,
+  Play,
   RefreshCw,
+  Square,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
@@ -17,6 +19,8 @@ import {
   installOpenRouterAgent,
   isManagedRunning,
   startManagedAgent,
+  stopManagedAgent,
+  uninstallAgentLocal,
 } from "@/lib/api";
 
 export interface MarketplaceViewProps {
@@ -32,10 +36,14 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
   const [installingOpenRouter, setInstallingOpenRouter] = useState(false);
   const [orMsg, setOrMsg] = useState<string | null>(null);
   const [openRouterRunning, setOpenRouterRunning] = useState(false);
+  const [openRouterBusy, setOpenRouterBusy] = useState(false);
+  const [openRouterRemoving, setOpenRouterRemoving] = useState(false);
 
   const [installingCloudRu, setInstallingCloudRu] = useState(false);
   const [crMsg, setCrMsg] = useState<string | null>(null);
   const [cloudRuRunning, setCloudRuRunning] = useState(false);
+  const [cloudRuBusy, setCloudRuBusy] = useState(false);
+  const [cloudRuRemoving, setCloudRuRemoving] = useState(false);
 
   const [installingEasystt, setInstallingEasystt] = useState(false);
   const [easysttMsg, setEasysttMsg] = useState<string | null>(null);
@@ -96,23 +104,77 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
     }
   };
 
-  const onStartOpenRouter = async () => {
+  const onToggleOpenRouter = async () => {
+    if (!openRouterAgent || openRouterBusy) return;
+    setOpenRouterBusy(true);
     try {
-      await startManagedAgent("openrouter-agent");
-      setOpenRouterRunning(true);
-      setOrMsg("OpenRouter Agent started.");
+      if (openRouterRunning) {
+        await stopManagedAgent("openrouter-agent");
+        setOpenRouterRunning(false);
+        setOrMsg("OpenRouter Agent stopped.");
+      } else {
+        await startManagedAgent("openrouter-agent");
+        setOpenRouterRunning(true);
+        setOrMsg("OpenRouter Agent started.");
+      }
     } catch (e) {
-      setOrMsg(`Start failed: ${String(e)}`);
+      setOrMsg(`Action failed: ${String(e)}`);
+    } finally {
+      setOpenRouterBusy(false);
     }
   };
 
-  const onStartCloudRu = async () => {
+  const onToggleCloudRu = async () => {
+    if (!cloudRuAgent || cloudRuBusy) return;
+    setCloudRuBusy(true);
     try {
-      await startManagedAgent("cloudru-agent");
-      setCloudRuRunning(true);
-      setCrMsg("Cloud.ru Agent started.");
+      if (cloudRuRunning) {
+        await stopManagedAgent("cloudru-agent");
+        setCloudRuRunning(false);
+        setCrMsg("Cloud.ru Agent stopped.");
+      } else {
+        await startManagedAgent("cloudru-agent");
+        setCloudRuRunning(true);
+        setCrMsg("Cloud.ru Agent started.");
+      }
     } catch (e) {
-      setCrMsg(`Start failed: ${String(e)}`);
+      setCrMsg(`Action failed: ${String(e)}`);
+    } finally {
+      setCloudRuBusy(false);
+    }
+  };
+
+  const onUninstallOpenRouter = async () => {
+    if (!openRouterAgent || openRouterRemoving) return;
+    const ok = window.confirm("Remove OpenRouter Agent from this computer?");
+    if (!ok) return;
+    setOpenRouterRemoving(true);
+    setOrMsg(null);
+    try {
+      await uninstallAgentLocal("openrouter-agent");
+      setOpenRouterRunning(false);
+      setOrMsg("OpenRouter Agent removed from this computer.");
+    } catch (e) {
+      setOrMsg(`Uninstall failed: ${String(e)}`);
+    } finally {
+      setOpenRouterRemoving(false);
+    }
+  };
+
+  const onUninstallCloudRu = async () => {
+    if (!cloudRuAgent || cloudRuRemoving) return;
+    const ok = window.confirm("Remove Cloud.ru Agent from this computer?");
+    if (!ok) return;
+    setCloudRuRemoving(true);
+    setCrMsg(null);
+    try {
+      await uninstallAgentLocal("cloudru-agent");
+      setCloudRuRunning(false);
+      setCrMsg("Cloud.ru Agent removed from this computer.");
+    } catch (e) {
+      setCrMsg(`Uninstall failed: ${String(e)}`);
+    } finally {
+      setCloudRuRemoving(false);
     }
   };
 
@@ -234,17 +296,32 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
               </button>
               <button
                 type="button"
-                onClick={onStartOpenRouter}
-                disabled={!openRouterAgent}
+                onClick={onToggleOpenRouter}
+                disabled={!openRouterAgent || openRouterBusy}
                 className={cn(
                   "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
                   "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
-                  !openRouterAgent && "opacity-60 cursor-not-allowed",
+                  (!openRouterAgent || openRouterBusy) && "opacity-60 cursor-not-allowed",
                 )}
               >
-                <Power size={12} />
-                {openRouterRunning ? t("ai.openrouter.running") : t("ai.openrouter.start")}
+                {openRouterRunning ? <Square size={12} /> : <Play size={12} />}
+                {openRouterRunning ? t("marketplace.stop") : t("ai.openrouter.start")}
               </button>
+              {openRouterAgent && (
+                <button
+                  type="button"
+                  onClick={onUninstallOpenRouter}
+                  disabled={openRouterRemoving}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                    "border-red-500/30 text-red-300 hover:bg-red-500/10",
+                    openRouterRemoving && "opacity-60 cursor-not-allowed",
+                  )}
+                >
+                  <Trash2 size={12} />
+                  {openRouterRemoving ? t("marketplace.uninstalling") : t("marketplace.remove")}
+                </button>
+              )}
               {openRouterAgent && (
                 <button
                   type="button"
@@ -316,17 +393,32 @@ export function MarketplaceView({ onOpenAgentDetail }: MarketplaceViewProps) {
               </button>
               <button
                 type="button"
-                onClick={onStartCloudRu}
-                disabled={!cloudRuAgent}
+                onClick={onToggleCloudRu}
+                disabled={!cloudRuAgent || cloudRuBusy}
                 className={cn(
                   "inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
                   "border-border-subtle hover:border-border-default text-muted hover:text-slate-200",
-                  !cloudRuAgent && "opacity-60 cursor-not-allowed",
+                  (!cloudRuAgent || cloudRuBusy) && "opacity-60 cursor-not-allowed",
                 )}
               >
-                <Power size={12} />
-                {cloudRuRunning ? t("ai.openrouter.running") : t("ai.openrouter.start")}
+                {cloudRuRunning ? <Square size={12} /> : <Play size={12} />}
+                {cloudRuRunning ? t("marketplace.stop") : t("ai.openrouter.start")}
               </button>
+              {cloudRuAgent && (
+                <button
+                  type="button"
+                  onClick={onUninstallCloudRu}
+                  disabled={cloudRuRemoving}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border transition-colors",
+                    "border-red-500/30 text-red-300 hover:bg-red-500/10",
+                    cloudRuRemoving && "opacity-60 cursor-not-allowed",
+                  )}
+                >
+                  <Trash2 size={12} />
+                  {cloudRuRemoving ? t("marketplace.uninstalling") : t("marketplace.remove")}
+                </button>
+              )}
               {cloudRuAgent && (
                 <button
                   type="button"

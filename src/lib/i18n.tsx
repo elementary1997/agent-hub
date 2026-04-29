@@ -49,6 +49,9 @@ const EN: Dict = {
   "marketplace.kind.utility": "STT",
   "marketplace.agentSettings": "Agent settings",
   "marketplace.badge": "Installed",
+  "marketplace.stop": "Stop",
+  "marketplace.remove": "Remove",
+  "marketplace.uninstalling": "Removing…",
   "ai.openrouter.title": "OpenRouter Agent",
   "ai.openrouter.blurb":
     "Install the managed Node agent, set OPENROUTER_API_KEY in the environment or agent config, then start. Open chat from the agent card (AI agents open chat on click).",
@@ -159,6 +162,9 @@ const RU: Dict = {
   "marketplace.kind.utility": "STT",
   "marketplace.agentSettings": "Настройки агента",
   "marketplace.badge": "Установлено",
+  "marketplace.stop": "Остановить",
+  "marketplace.remove": "Удалить",
+  "marketplace.uninstalling": "Удаление…",
   "ai.openrouter.title": "Агент OpenRouter",
   "ai.openrouter.blurb":
     "Установите управляемый Node-агент, задайте OPENROUTER_API_KEY в окружении или конфиге, затем «Запуск». Чат открывается по карточке агента (для ИИ — по клику).",
