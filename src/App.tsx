@@ -161,6 +161,14 @@ export default function App() {
     setSettingsOpen(false);
     setDetailAgent(id);
   };
+  const handleSwitchChatAgent = (id: string) => {
+    setChatAgent(id);
+    setChatConversation(null);
+    setChatDraft(null);
+    setChatDraftToken(null);
+    setChatAutoSubmitToken(null);
+    localStorage.setItem(LAST_AI_KEY, id);
+  };
   const handleOpenSettings = () => {
     setChatAgent(null);
     setDetailAgent(null);
@@ -338,6 +346,15 @@ export default function App() {
       <div className="h-screen w-screen overflow-hidden">
         <ChatView
           agentId={chatAgent}
+          onSwitchAgent={handleSwitchChatAgent}
+          onOpenProviderSettings={(id) => {
+            setChatAgent(null);
+            setChatConversation(null);
+            setChatDraft(null);
+            setChatDraftToken(null);
+            setChatAutoSubmitToken(null);
+            setDetailAgent(id);
+          }}
           initialConversationId={chatConversation}
           initialDraft={chatDraft}
           initialDraftToken={chatDraftToken}

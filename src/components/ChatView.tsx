@@ -43,6 +43,8 @@ import { cn } from "@/lib/cn";
 interface ChatViewProps {
   agentId: string;
   onBack: () => void;
+  onSwitchAgent?: (agentId: string) => void;
+  onOpenProviderSettings?: (agentId: string) => void;
   /**
    * If set, the chat opens with this conversation pre-selected — used when
    * the command palette deep-links into a search hit. Honored once on mount
@@ -81,12 +83,21 @@ function makeRequestId(): string {
 export function ChatView({
   agentId,
   onBack,
+  onSwitchAgent,
+  onOpenProviderSettings,
   initialConversationId,
   initialDraft,
   initialDraftToken,
   initialAutoSubmitToken,
 }: ChatViewProps) {
   const agent = useAgentStore((s) => s.agents[agentId]);
+  const aiAgents = useAgentStore((s) =>
+    Object.values(s.agents)
+      .filter((a) => a.manifest.kind === "ai")
+      .sort((a, b) =>
+        a.manifest.name.localeCompare(b.manifest.name, undefined, { sensitivity: "base" }),
+      ),
+  );
 
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(true);
@@ -482,6 +493,25 @@ export function ChatView({
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            {aiAgents.length > 1 && (
+              <select
+                value={agentId}
+                onChange={(e) => {
+                  setError(null);
+                  setShowSettings(false);
+                  onSwitchAgent?.(e.target.value);
+                }}
+                disabled={Boolean(stream)}
+                className="text-xs bg-bg-elev border border-border-subtle hover:border-border-default rounded-lg px-2 py-1 outline-none disabled:opacity-60"
+                title="Provider"
+              >
+                {aiAgents.map((a) => (
+                  <option key={a.manifest.id} value={a.manifest.id}>
+                    {a.manifest.name}
+                  </option>
+                ))}
+              </select>
+            )}
             {models.length > 1 && (
               <select
                 value={model ?? ""}
@@ -494,6 +524,16 @@ export function ChatView({
                   </option>
                 ))}
               </select>
+            )}
+            {onOpenProviderSettings && (
+              <button
+                type="button"
+                onClick={() => onOpenProviderSettings(agentId)}
+                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
+                title="Provider settings"
+              >
+                <Settings2 size={12} /> Provider
+              </button>
             )}
             {active && ai?.system_prompt_editable && (
               <button
