@@ -40,6 +40,7 @@ import type {
 import { useAgentStore } from "@/store/agents";
 import { Markdown } from "@/components/Markdown";
 import { cn } from "@/lib/cn";
+import { useI18n } from "@/lib/i18n";
 
 interface ChatViewProps {
   agentId: string;
@@ -105,7 +106,9 @@ export function ChatView({
   initialDraftToken,
   initialAutoSubmitToken,
 }: ChatViewProps) {
+  const { t } = useI18n();
   const modelStorageKey = `hub.chat.selectedModel.${agentId}`;
+  const fontSizeStorageKey = "hub.chat.fontSizePx";
   const agent = useAgentStore((s) => s.agents[agentId]);
   const agentsMap = useAgentStore((s) => s.agents);
   const aiAgents = useMemo(
@@ -137,6 +140,11 @@ export function ChatView({
   const [attaching, setAttaching] = useState(false);
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  const [chatFontSizePx, setChatFontSizePx] = useState<number>(() => {
+    const raw = Number(localStorage.getItem("hub.chat.fontSizePx"));
+    if (Number.isFinite(raw)) return Math.min(22, Math.max(12, raw));
+    return 14;
+  });
 
   const streamRef = useRef<StreamState | null>(null);
   const autoSubmitTokenRef = useRef<number | null>(null);
@@ -303,6 +311,10 @@ export function ChatView({
     localStorage.setItem(modelStorageKey, model);
   }, [model, modelStorageKey]);
 
+  useEffect(() => {
+    localStorage.setItem(fontSizeStorageKey, String(chatFontSizePx));
+  }, [chatFontSizePx, fontSizeStorageKey]);
+
   const handleNew = useCallback(async () => {
     try {
       const c = await createConversation(agentId, {});
@@ -358,6 +370,7 @@ export function ChatView({
     });
     setDraft("");
     setAttachments([]);
+    setError(null);
 
     try {
       await sendMessage({
@@ -367,6 +380,16 @@ export function ChatView({
         content: outgoingParts,
         model: model && models.includes(model) ? model : undefined,
       });
+      const cur = streamRef.current;
+      // Some providers close stream without explicit `end`. Finalize locally.
+      if (cur && cur.requestId === requestId) {
+        setStream(null);
+        sendLockRef.current = false;
+        getConversation(agentId, convId)
+          .then((c) => setActive(c))
+          .catch(() => {});
+        refreshList();
+      }
     } catch (e) {
       const msg = String(e ?? "");
       if (/read sse chunk/i.test(msg)) {
@@ -374,7 +397,7 @@ export function ChatView({
         // If we already received some tokens, treat this as a benign stream tear-down.
         // Also suppress when stream already rotated/finished (race between "end" and catch).
         if (cur && cur.requestId === requestId && cur.buffer.length === 0) {
-          setError("Connection interrupted while streaming. Please retry.");
+          setError(t("chat.streamInterrupted"));
         }
         setStream(null);
         sendLockRef.current = false;
@@ -384,7 +407,7 @@ export function ChatView({
       setStream(null);
       setError(msg);
     }
-  }, [agentId, active, attachments, draft, model, stream]);
+  }, [agentId, active, attachments, draft, model, stream, refreshList, t]);
 
   useEffect(() => {
     if (!autoSubmitTokenRef.current) return;
@@ -415,7 +438,7 @@ export function ChatView({
           ? "audio"
           : "pdf";
       if (!attachmentKinds.includes(kind)) {
-        setError(`This agent does not support ${kind} attachments.`);
+        setError(t("chat.attachmentKindNotSupported", { kind }));
         return;
       }
       setAttaching(true);
@@ -497,7 +520,7 @@ export function ChatView({
   if (!agent) {
     return (
       <div className="h-full grid place-items-center text-sm text-muted">
-        Agent not found.
+        {t("chat.agentNotFound")}
       </div>
     );
   }
@@ -511,8 +534,8 @@ export function ChatView({
             type="button"
             onClick={onBack}
             className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-100 transition-colors"
-            aria-label="Back to hub"
-            title="Back to hub"
+            aria-label={t("chat.backToHub")}
+            title={t("chat.backToHub")}
           >
             <ArrowLeft size={14} />
           </button>
@@ -529,14 +552,14 @@ export function ChatView({
           onClick={handleNew}
           className="m-3 inline-flex items-center justify-center gap-2 text-xs px-3 py-2 rounded-lg border border-dashed border-border-default text-muted hover:text-slate-100 hover:border-border-strong transition-colors"
         >
-          <MessageSquarePlus size={14} /> New conversation
+          <MessageSquarePlus size={14} /> {t("chat.newConversation")}
         </button>
 
         <div className="flex-1 overflow-auto px-2 pb-2 space-y-1">
           {conversationsLoading && conversations.length === 0 ? (
-            <div className="px-2 py-1 text-xs text-muted">Loading…</div>
+            <div className="px-2 py-1 text-xs text-muted">{t("chat.loading")}</div>
           ) : conversations.length === 0 ? (
-            <div className="px-2 py-1 text-xs text-muted">No conversations yet.</div>
+            <div className="px-2 py-1 text-xs text-muted">{t("chat.noConversations")}</div>
           ) : (
             conversations.map((c) => {
               const isActive = c.id === activeId;
@@ -552,15 +575,15 @@ export function ChatView({
                   onClick={() => setActiveId(c.id)}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] truncate">{c.title || "Untitled"}</div>
+                    <div className="text-[13px] truncate">{c.title || t("chat.untitled")}</div>
                     <div className="text-[10px] text-muted truncate">
-                      {c.message_count ?? (Array.isArray(c.messages) ? c.messages.length : 0)} messages
+                      {c.message_count ?? (Array.isArray(c.messages) ? c.messages.length : 0)} {t("chat.messages")}
                     </div>
                   </div>
                   <button
                     type="button"
-                    aria-label="Delete conversation"
-                    title="Delete conversation"
+                    aria-label={t("chat.deleteConversation")}
+                    title={t("chat.deleteConversation")}
                     onClick={(e) => {
                       e.stopPropagation();
                       void handleDelete(c.id);
@@ -600,18 +623,18 @@ export function ChatView({
                 />
               ) : (
                 <div className="font-medium text-sm truncate">
-                  {active?.title || (active ? "Untitled" : "Pick a conversation")}
+                  {active?.title || (active ? t("chat.untitled") : t("chat.pickConversation"))}
                 </div>
               )}
               {active && !renamingTitle && (
                 <button
                   type="button"
                   onClick={() => {
-                    setTitleDraft(active.title || "Untitled");
+                    setTitleDraft(active.title || t("chat.untitled"));
                     setRenamingTitle(true);
                   }}
                   className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
-                  title="Rename conversation"
+                  title={t("chat.renameConversation")}
                 >
                   <Pencil size={12} />
                 </button>
@@ -619,12 +642,26 @@ export function ChatView({
             </div>
             <div className="text-[11px] text-muted">
               {active
-                ? `${Array.isArray(active.messages) ? active.messages.length : 0} messages · ${agent.manifest.kind === "ai" ? "AI" : agent.manifest.kind}`
-                : "or start a new one →"}
+                ? `${Array.isArray(active.messages) ? active.messages.length : 0} ${t("chat.messages")} · ${agent.manifest.kind === "ai" ? "AI" : agent.manifest.kind}`
+                : t("chat.orStartNew")}
             </div>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 rounded-lg border border-border-subtle px-2 py-1 bg-bg-elev/40">
+              <span className="text-[10px] text-muted">{t("chat.font")}</span>
+              <input
+                type="range"
+                min={12}
+                max={22}
+                step={1}
+                value={chatFontSizePx}
+                onChange={(e) => setChatFontSizePx(Number(e.target.value))}
+                className="w-20 accent-indigo-500"
+                title={t("chat.fontSize")}
+              />
+              <span className="text-[10px] text-muted tabular-nums">{chatFontSizePx}px</span>
+            </div>
             {aiAgents.length > 1 && (
               <select
                 value={agentId}
@@ -635,7 +672,7 @@ export function ChatView({
                 }}
                 disabled={Boolean(stream)}
                 className="text-xs bg-bg-elev border border-border-subtle hover:border-border-default rounded-lg px-2 py-1 outline-none disabled:opacity-60"
-                title="Provider"
+                title={t("chat.provider")}
               >
                 {aiAgents.map((a) => (
                   <option key={a.manifest.id} value={a.manifest.id}>
@@ -662,9 +699,9 @@ export function ChatView({
                 type="button"
                 onClick={() => onOpenProviderSettings(agentId)}
                 className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
-                title="Provider settings"
+                title={t("chat.providerSettings")}
               >
-                <Settings2 size={12} /> Provider
+                <Settings2 size={12} /> {t("chat.provider")}
               </button>
             )}
             {active && ai?.system_prompt_editable && (
@@ -677,9 +714,9 @@ export function ChatView({
                     ? "border-border-strong text-slate-100"
                     : "border-border-subtle text-muted hover:text-slate-100 hover:border-border-default",
                 )}
-                title="System prompt"
+                title={t("chat.systemPrompt")}
               >
-                <Settings2 size={12} /> System
+                <Settings2 size={12} /> {t("chat.system")}
               </button>
             )}
             {active && (
@@ -688,15 +725,15 @@ export function ChatView({
                 onClick={async () => {
                   try {
                     const out = await exportConversation(agentId, active.id);
-                    setError(`Exported:\n${out.markdown_path}\n${out.json_path}`);
+                    setError(`${t("chat.exported")}:\n${out.markdown_path}\n${out.json_path}`);
                   } catch (e) {
                     setError(String(e));
                   }
                 }}
                 className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
-                title="Export conversation"
+                title={t("chat.exportConversation")}
               >
-                <Download size={12} /> Export
+                <Download size={12} /> {t("chat.export")}
               </button>
             )}
           </div>
@@ -712,13 +749,13 @@ export function ChatView({
             >
               <div className="p-4 space-y-3">
                 <label className="text-xs uppercase tracking-wider text-muted">
-                  System prompt
+                  {t("chat.systemPrompt")}
                 </label>
                 <textarea
                   value={systemDraft}
                   onChange={(e) => setSystemDraft(e.target.value)}
                   rows={4}
-                  placeholder="You are a helpful assistant…"
+                  placeholder={t("chat.systemPromptPlaceholder")}
                   className="w-full bg-bg-elev border border-border-subtle rounded-lg p-2 text-sm font-mono outline-none focus:border-border-default"
                 />
                 <div className="flex justify-end gap-2">
@@ -730,14 +767,14 @@ export function ChatView({
                     }}
                     className="text-xs px-3 py-1.5 rounded-lg border border-border-subtle text-muted hover:text-slate-100"
                   >
-                    Cancel
+                    {t("chat.cancel")}
                   </button>
                   <button
                     type="button"
                     onClick={handleSavePrompt}
                     className="text-xs px-3 py-1.5 rounded-lg border border-border-default text-slate-100 hover:border-border-strong"
                   >
-                    Save
+                    {t("chat.save")}
                   </button>
                 </div>
               </div>
@@ -753,7 +790,7 @@ export function ChatView({
               onClick={() => setError(null)}
               className="ml-2 underline opacity-70 hover:opacity-100"
             >
-              dismiss
+              {t("chat.dismiss")}
             </button>
           </div>
         )}
@@ -763,6 +800,8 @@ export function ChatView({
           accent={accent}
           isStreaming={!!stream && !stream.finished}
           empty={!active}
+          fontSizePx={chatFontSizePx}
+          t={t}
         />
 
         <Composer
@@ -778,6 +817,8 @@ export function ChatView({
           }
           attaching={attaching}
           accent={accent}
+          fontSizePx={chatFontSizePx}
+          t={t}
         />
       </section>
     </div>
@@ -789,9 +830,11 @@ interface MessageListProps {
   accent: string;
   isStreaming: boolean;
   empty: boolean;
+  fontSizePx: number;
+  t: (key: string, vars?: Record<string, string | number>) => string;
 }
 
-function MessageList({ messages, accent, isStreaming, empty }: MessageListProps) {
+function MessageList({ messages, accent, isStreaming, empty, fontSizePx, t }: MessageListProps) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!ref.current) return;
@@ -803,27 +846,38 @@ function MessageList({ messages, accent, isStreaming, empty }: MessageListProps)
       <div className="max-w-3xl mx-auto px-5 py-6 space-y-5">
         {empty ? (
           <div className="h-[40vh] grid place-items-center text-sm text-muted">
-            Pick a conversation on the left or start a new one.
+            {t("chat.pickLeftOrStart")}
           </div>
         ) : messages.length === 0 ? (
           <div className="h-[40vh] grid place-items-center text-center">
             <div className="max-w-sm">
-              <div className="font-semibold mb-1">Send the first message</div>
+              <div className="font-semibold mb-1">{t("chat.sendFirstMessage")}</div>
               <p className="text-sm text-muted">
-                The agent will respond with streaming tokens. You can change the
-                system prompt and model from the header.
+                {t("chat.emptyHint")}
               </p>
             </div>
           </div>
         ) : (
-          messages.map((m) => <Bubble key={m.id} message={m} accent={accent} />)
+          messages.map((m) => (
+            <Bubble key={m.id} message={m} accent={accent} fontSizePx={fontSizePx} t={t} />
+          ))
         )}
       </div>
     </div>
   );
 }
 
-function Bubble({ message, accent }: { message: ChatMessage; accent: string }) {
+function Bubble({
+  message,
+  accent,
+  fontSizePx,
+  t,
+}: {
+  message: ChatMessage;
+  accent: string;
+  fontSizePx: number;
+  t: (key: string, vars?: Record<string, string | number>) => string;
+}) {
   const isUser = message.role === "user";
   const text = partsToText(message.content);
   return (
@@ -846,17 +900,18 @@ function Bubble({ message, accent }: { message: ChatMessage; accent: string }) {
       </div>
       <div
         className={cn(
-          "max-w-[78%] rounded-2xl px-4 py-2.5 text-[14px] border",
+          "max-w-[78%] rounded-2xl px-4 py-2.5 border",
           isUser
             ? "bg-bg-elev/70 border-border-subtle"
             : "bg-bg-card/80 border-border-subtle",
         )}
+        style={{ fontSize: `${fontSizePx}px` }}
       >
         {text ? (
           <Markdown>{text}</Markdown>
         ) : (
           <span className="inline-flex items-center gap-1 text-muted text-xs">
-            <Loader2 size={12} className="animate-spin" /> thinking…
+            <Loader2 size={12} className="animate-spin" /> {t("chat.thinking")}
           </span>
         )}
       </div>
@@ -875,6 +930,8 @@ interface ComposerProps {
   onRemoveAttachment: (idx: number) => void;
   attaching: boolean;
   accent: string;
+  fontSizePx: number;
+  t: (key: string, vars?: Record<string, string | number>) => string;
 }
 
 function Composer({
@@ -888,6 +945,8 @@ function Composer({
   onRemoveAttachment,
   attaching,
   accent,
+  fontSizePx,
+  t,
 }: ComposerProps) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -905,8 +964,8 @@ function Composer({
           disabled={disabled || !supportsAttachments || attaching}
           onClick={onPickAttachment}
           className="inline-flex items-center justify-center w-10 h-10 rounded-xl border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          aria-label="Attach file"
-          title={supportsAttachments ? "Attach file" : "Attachments not supported"}
+          aria-label={t("chat.attachFile")}
+          title={supportsAttachments ? t("chat.attachFile") : t("chat.attachmentsNotSupported")}
         >
           {attaching ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
         </button>
@@ -920,10 +979,11 @@ function Composer({
               if (!disabled) onSubmit();
             }
           }}
-          placeholder={disabled ? "Streaming…" : "Send a message — Enter to submit, Shift+Enter for newline"}
+          placeholder={disabled ? t("chat.streaming") : t("chat.placeholder")}
           rows={1}
           disabled={disabled}
           className="flex-1 resize-none bg-bg-elev border border-border-subtle rounded-2xl px-4 py-2.5 text-sm outline-none focus:border-border-default placeholder:text-muted/70 disabled:opacity-50"
+          style={{ fontSize: `${fontSizePx}px` }}
         />
         <button
           type="button"
@@ -935,8 +995,8 @@ function Composer({
             background: `${accent}1a`,
             color: accent,
           }}
-          aria-label="Send"
-          title="Send"
+          aria-label={t("chat.send")}
+          title={t("chat.send")}
         >
           <Send size={16} />
         </button>
@@ -948,12 +1008,12 @@ function Composer({
               key={`${"attachment_id" in p ? p.attachment_id : i}`}
               className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md border border-border-subtle bg-bg-elev/70"
             >
-              {"name" in p ? p.name : "attachment"}
+              {"name" in p ? p.name : t("chat.attachment")}
               <button
                 type="button"
                 onClick={() => onRemoveAttachment(i)}
                 className="text-muted hover:text-slate-100"
-                aria-label="Remove attachment"
+                aria-label={t("chat.removeAttachment")}
               >
                 <X size={12} />
               </button>

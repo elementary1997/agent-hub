@@ -523,7 +523,7 @@ export default function App() {
               </div>
             ) : (
               <div className="h-full grid place-items-center text-sm text-muted">
-                No AI providers available.
+                {t("chat.noProviders")}
               </div>
             )
           ) : error ? (

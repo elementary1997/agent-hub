@@ -12,7 +12,7 @@ interface MarkdownProps {
 
 export function Markdown({ children, className }: MarkdownProps) {
   return (
-    <div className={cn("md leading-relaxed text-[14px]", className)}>
+    <div className={cn("md leading-relaxed", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
