@@ -15,6 +15,11 @@ use crate::agents::{AgentManifest, Registry};
 use crate::supervisor::Supervisor;
 
 const STORE_FILE: &str = "agent-hub.json";
+const KEY_HOTKEY_SHOW_HUB: &str = "hotkey.show_hub";
+const KEY_HOTKEY_NEW_CHAT: &str = "hotkey.new_chat";
+const KEY_UPDATER_PUBKEY: &str = "updater.pubkey";
+pub const DEFAULT_HOTKEY_SHOW_HUB: &str = "Ctrl+Shift+H";
+pub const DEFAULT_HOTKEY_NEW_CHAT: &str = "Ctrl+Shift+N";
 
 fn key_auto_start(id: &str) -> String {
     format!("agent.{id}.auto_start")
@@ -41,6 +46,81 @@ pub fn set_auto_start(app: &AppHandle, id: &str, enabled: bool) -> Result<(), St
     store.set(key_auto_start(id), Value::Bool(enabled));
     store.save().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct HotkeyPrefs {
+    pub show_hub: String,
+    pub new_chat: String,
+}
+
+pub fn get_hotkey_prefs(app: &AppHandle) -> HotkeyPrefs {
+    let store = app.store(STORE_FILE).ok();
+    let show_hub = store
+        .as_ref()
+        .and_then(|s| s.get(KEY_HOTKEY_SHOW_HUB))
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| DEFAULT_HOTKEY_SHOW_HUB.to_string());
+    let new_chat = store
+        .as_ref()
+        .and_then(|s| s.get(KEY_HOTKEY_NEW_CHAT))
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| DEFAULT_HOTKEY_NEW_CHAT.to_string());
+    HotkeyPrefs { show_hub, new_chat }
+}
+
+pub fn set_hotkey_prefs(app: &AppHandle, prefs: &HotkeyPrefs) -> Result<(), String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    store.set(
+        KEY_HOTKEY_SHOW_HUB,
+        Value::String(prefs.show_hub.trim().to_string()),
+    );
+    store.set(
+        KEY_HOTKEY_NEW_CHAT,
+        Value::String(prefs.new_chat.trim().to_string()),
+    );
+    store.save().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UpdaterPrefs {
+    pub pubkey: String,
+}
+
+pub fn get_updater_prefs(app: &AppHandle) -> UpdaterPrefs {
+    let store = app.store(STORE_FILE).ok();
+    let pubkey = store
+        .as_ref()
+        .and_then(|s| s.get(KEY_UPDATER_PUBKEY))
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+    UpdaterPrefs { pubkey }
+}
+
+pub fn set_updater_prefs(app: &AppHandle, prefs: &UpdaterPrefs) -> Result<(), String> {
+    let store = app.store(STORE_FILE).map_err(|e| e.to_string())?;
+    store.set(
+        KEY_UPDATER_PUBKEY,
+        Value::String(prefs.pubkey.trim().to_string()),
+    );
+    store.save().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn hotkeys_get(app: AppHandle) -> Result<HotkeyPrefs, String> {
+    Ok(get_hotkey_prefs(&app))
+}
+
+#[tauri::command]
+pub async fn updater_prefs_get(app: AppHandle) -> Result<UpdaterPrefs, String> {
+    Ok(get_updater_prefs(&app))
+}
+
+#[tauri::command]
+pub async fn updater_prefs_set(app: AppHandle, prefs: UpdaterPrefs) -> Result<(), String> {
+    set_updater_prefs(&app, &prefs)
 }
 
 /// If the manifest is a managed agent and the user asked us to auto-start it,

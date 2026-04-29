@@ -12,11 +12,18 @@ import { useI18n } from "@/lib/i18n";
 import { useAgentStore } from "@/store/agents";
 import {
   agentsDir,
+  easysttInstalled,
+  installEasysttLatest,
+  installOpenRouterAgent,
   listAgents,
   onAgentEvent,
+  getHotkeys,
+  onHotkeysUpdated,
   onAgentRemoved,
   onAgentUpserted,
+  onHotkeyNewChat,
   openNative,
+  onTrayNewChat,
   quitAgent,
   startManagedAgent,
   stopManagedAgent,
@@ -43,6 +50,7 @@ function sortAgents(list: Agent[]): Agent[] {
 }
 
 export default function App() {
+  const LAST_AI_KEY = "hub.lastAiAgentId";
   const { t } = useI18n();
   const agentsMap = useAgentStore((s) => s.agents);
   const setAll = useAgentStore((s) => s.setAll);
@@ -67,6 +75,10 @@ export default function App() {
     if (saved === "light" || saved === "dark") return saved;
     return "dark";
   });
+  const [hotkeys, setHotkeys] = useState({ show_hub: "Ctrl+Shift+H", new_chat: "Ctrl+Shift+N" });
+  const [onboardingDismissed, setOnboardingDismissed] = useState(
+    () => localStorage.getItem("hub.onboarding.dismissed") === "1",
+  );
 
   const toggleTheme = () => setTheme((x) => (x === "dark" ? "light" : "dark"));
 
@@ -92,6 +104,7 @@ export default function App() {
     setSettingsOpen(false);
     setChatConversation(conversationId ?? null);
     setChatAgent(id);
+    localStorage.setItem(LAST_AI_KEY, id);
   };
   const handleOpenDetail = (id: string) => {
     setChatAgent(null);
@@ -137,6 +150,34 @@ export default function App() {
     };
   }, [setAll, upsert, remove, pushEvent, setManifestDir, setError, setLoaded]);
 
+  useEffect(() => {
+    getHotkeys().then(setHotkeys).catch(() => {});
+    let unlisten: (() => void) | null = null;
+    onHotkeysUpdated((prefs) => setHotkeys(prefs)).then((u) => (unlisten = u));
+    return () => unlisten?.();
+  }, []);
+
+  useEffect(() => {
+    const openLastAi = () => {
+      const last = localStorage.getItem(LAST_AI_KEY);
+      const availableAi = Object.values(agentsMap).filter((a) => a.manifest.kind === "ai");
+      const target =
+        (last && agentsMap[last]?.manifest.kind === "ai" ? last : null) ??
+        availableAi[0]?.manifest.id;
+      if (!target) return;
+      handleOpenChat(target, null);
+    };
+
+    let unlisten: (() => void) | null = null;
+    let unlistenTray: (() => void) | null = null;
+    onHotkeyNewChat(openLastAi).then((u) => (unlisten = u));
+    onTrayNewChat(openLastAi).then((u) => (unlistenTray = u));
+    return () => {
+      unlisten?.();
+      unlistenTray?.();
+    };
+  }, [agentsMap]);
+
   const agents = useMemo(() => sortAgents(Object.values(agentsMap)), [agentsMap]);
 
   const counts = useMemo<Record<string, number>>(() => {
@@ -167,6 +208,14 @@ export default function App() {
   }, [agents]);
 
   const visible = useMemo(() => applyFilter(agents, filter), [agents, filter]);
+  const showOnboarding =
+    loaded &&
+    !error &&
+    agents.length === 0 &&
+    !onboardingDismissed &&
+    !chatAgent &&
+    !detailAgent &&
+    !settingsOpen;
 
   const handleOpenPrimary = (id: string) => {
     const agent = agentsMap[id];
@@ -255,6 +304,8 @@ export default function App() {
         tagCounts={tagCounts}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenSettings={handleOpenSettings}
+        showHubHotkey={hotkeys.show_hub}
+        newChatHotkey={hotkeys.new_chat}
       />
 
       <main className="flex-1 flex flex-col min-w-0">
@@ -293,7 +344,16 @@ export default function App() {
           ) : error ? (
             <ErrorState message={error} />
           ) : visible.length === 0 ? (
-            <EmptyState dir={manifestDir ?? null} loaded={loaded} />
+            showOnboarding ? (
+              <OnboardingState
+                onSkip={() => {
+                  setOnboardingDismissed(true);
+                  localStorage.setItem("hub.onboarding.dismissed", "1");
+                }}
+              />
+            ) : (
+              <EmptyState dir={manifestDir ?? null} loaded={loaded} />
+            )
           ) : (
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               <AnimatePresence mode="popLayout">
@@ -311,6 +371,87 @@ export default function App() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function OnboardingState({ onSkip }: { onSkip: () => void }) {
+  const { t } = useI18n();
+  const [installingStt, setInstallingStt] = useState(false);
+  const [installingAi, setInstallingAi] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const handleInstallStt = async () => {
+    setInstallingStt(true);
+    setMsg(null);
+    try {
+      await installEasysttLatest();
+      const ok = await easysttInstalled();
+      setMsg(ok ? t("onboarding.sttDone") : t("onboarding.sttDone"));
+    } catch (e) {
+      setMsg(String(e));
+    } finally {
+      setInstallingStt(false);
+    }
+  };
+
+  const handleInstallAi = async () => {
+    setInstallingAi(true);
+    setMsg(null);
+    try {
+      await installOpenRouterAgent();
+      setMsg(t("onboarding.aiDone"));
+    } catch (e) {
+      setMsg(String(e));
+    } finally {
+      setInstallingAi(false);
+    }
+  };
+
+  return (
+    <div className="h-full grid place-items-center">
+      <div className="max-w-2xl w-full rounded-2xl border border-border-subtle bg-bg-card/50 p-5 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">{t("onboarding.title")}</h2>
+          <p className="text-sm text-muted mt-1">{t("onboarding.subtitle")}</p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="rounded-xl border border-border-subtle bg-bg-elev/40 p-3 space-y-2">
+            <div className="font-medium">{t("onboarding.sttTitle")}</div>
+            <p className="text-xs text-muted">{t("onboarding.sttDesc")}</p>
+            <button
+              type="button"
+              onClick={handleInstallStt}
+              disabled={installingStt}
+              className="text-xs px-3 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-100 transition-colors disabled:opacity-60"
+            >
+              {installingStt ? t("onboarding.installing") : t("onboarding.installStt")}
+            </button>
+          </div>
+          <div className="rounded-xl border border-border-subtle bg-bg-elev/40 p-3 space-y-2">
+            <div className="font-medium">{t("onboarding.aiTitle")}</div>
+            <p className="text-xs text-muted">{t("onboarding.aiDesc")}</p>
+            <button
+              type="button"
+              onClick={handleInstallAi}
+              disabled={installingAi}
+              className="text-xs px-3 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-100 transition-colors disabled:opacity-60"
+            >
+              {installingAi ? t("onboarding.installing") : t("onboarding.installAi")}
+            </button>
+          </div>
+        </div>
+        {msg && <div className="text-xs text-muted break-words">{msg}</div>}
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-xs px-3 py-1.5 rounded-lg border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
+          >
+            {t("onboarding.skip")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

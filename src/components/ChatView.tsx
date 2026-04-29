@@ -9,21 +9,26 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Bot,
+  Paperclip,
   Loader2,
   MessageSquarePlus,
+  X,
   Send,
   Settings2,
+  Download,
   Trash2,
   User,
 } from "lucide-react";
 import {
   createConversation,
   deleteConversation,
+  exportConversation,
   getConversation,
   listConversations,
   onChatStream,
   patchConversation,
   sendMessage,
+  storeAttachment,
 } from "@/lib/chat";
 import type {
   ChatConversation,
@@ -88,6 +93,8 @@ export function ChatView({
   const [systemDraft, setSystemDraft] = useState("");
   const [model, setModel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<ContentPart[]>([]);
+  const [attaching, setAttaching] = useState(false);
 
   const streamRef = useRef<StreamState | null>(null);
   streamRef.current = stream;
@@ -211,15 +218,19 @@ export function ChatView({
   );
 
   const handleSend = useCallback(async () => {
-    if (!draft.trim() || stream || !active) return;
+    if ((!draft.trim() && attachments.length === 0) || stream || !active) return;
     let convId = active.id;
     if (!convId) return;
     const requestId = makeRequestId();
+    const outgoingParts: ContentPart[] = [
+      ...(draft.trim() ? asTextPart(draft.trim()) : []),
+      ...attachments,
+    ];
 
     const userMsg: ChatMessage = {
       id: `local_${requestId}_user`,
       role: "user",
-      content: asTextPart(draft.trim()),
+      content: outgoingParts,
       at: new Date().toISOString(),
     };
     setActive({ ...active, messages: [...active.messages, userMsg] });
@@ -230,22 +241,76 @@ export function ChatView({
       finished: false,
       error: null,
     });
-    const text = draft.trim();
     setDraft("");
+    setAttachments([]);
 
     try {
       await sendMessage({
         agentId,
         conversationId: convId,
         requestId,
-        content: asTextPart(text),
+        content: outgoingParts,
         model: model ?? undefined,
       });
     } catch (e) {
       setStream(null);
       setError(String(e));
     }
-  }, [agentId, active, draft, model, stream]);
+  }, [agentId, active, attachments, draft, model, stream]);
+  const supportsAttachments = (ai?.supports_attachments ?? []).length > 0;
+
+  const handlePickAttachment = useCallback(async () => {
+    if (!supportsAttachments || attaching) return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = [
+      ai?.supports_attachments?.includes("image") ? "image/*" : "",
+      ai?.supports_attachments?.includes("audio") ? "audio/*" : "",
+      ai?.supports_attachments?.includes("pdf") ? "application/pdf" : "",
+    ]
+      .filter(Boolean)
+      .join(",");
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const kind: "image" | "audio" | "pdf" = file.type.startsWith("image/")
+        ? "image"
+        : file.type.startsWith("audio/")
+          ? "audio"
+          : "pdf";
+      if (!(ai?.supports_attachments ?? []).includes(kind)) {
+        setError(`This agent does not support ${kind} attachments.`);
+        return;
+      }
+      setAttaching(true);
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        const stored = await storeAttachment({
+          agentId,
+          kind,
+          name: file.name,
+          mime: file.type || (kind === "pdf" ? "application/pdf" : "application/octet-stream"),
+          dataUrl,
+        });
+        setAttachments((prev) => [
+          ...prev,
+          {
+            type: kind,
+            attachment_id: stored.attachment_id,
+            name: stored.name,
+            mime: stored.mime,
+            size_bytes: stored.size_bytes,
+          },
+        ]);
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setAttaching(false);
+      }
+    };
+    input.click();
+  }, [agentId, ai?.supports_attachments, attaching, supportsAttachments]);
+
 
   const handleSavePrompt = useCallback(async () => {
     if (!active) return;
@@ -397,6 +462,23 @@ export function ChatView({
                 <Settings2 size={12} /> System
               </button>
             )}
+            {active && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const out = await exportConversation(agentId, active.id);
+                    setError(`Exported:\n${out.markdown_path}\n${out.json_path}`);
+                  } catch (e) {
+                    setError(String(e));
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
+                title="Export conversation"
+              >
+                <Download size={12} /> Export
+              </button>
+            )}
           </div>
         </header>
 
@@ -468,6 +550,13 @@ export function ChatView({
           value={draft}
           onChange={setDraft}
           onSubmit={handleSend}
+          supportsAttachments={supportsAttachments}
+          attachments={attachments}
+          onPickAttachment={() => void handlePickAttachment()}
+          onRemoveAttachment={(idx) =>
+            setAttachments((prev) => prev.filter((_, i) => i !== idx))
+          }
+          attaching={attaching}
           accent={accent}
         />
       </section>
@@ -560,10 +649,26 @@ interface ComposerProps {
   value: string;
   onChange: (v: string) => void;
   onSubmit: () => void;
+  supportsAttachments: boolean;
+  attachments: ContentPart[];
+  onPickAttachment: () => void;
+  onRemoveAttachment: (idx: number) => void;
+  attaching: boolean;
   accent: string;
 }
 
-function Composer({ disabled, value, onChange, onSubmit, accent }: ComposerProps) {
+function Composer({
+  disabled,
+  value,
+  onChange,
+  onSubmit,
+  supportsAttachments,
+  attachments,
+  onPickAttachment,
+  onRemoveAttachment,
+  attaching,
+  accent,
+}: ComposerProps) {
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -575,6 +680,16 @@ function Composer({ disabled, value, onChange, onSubmit, accent }: ComposerProps
   return (
     <div className="border-t border-border-subtle bg-bg-card/30 px-5 py-3">
       <div className="max-w-3xl mx-auto flex items-end gap-2">
+        <button
+          type="button"
+          disabled={disabled || !supportsAttachments || attaching}
+          onClick={onPickAttachment}
+          className="inline-flex items-center justify-center w-10 h-10 rounded-xl border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          aria-label="Attach file"
+          title={supportsAttachments ? "Attach file" : "Attachments not supported"}
+        >
+          {attaching ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
+        </button>
         <textarea
           ref={taRef}
           value={value}
@@ -593,7 +708,7 @@ function Composer({ disabled, value, onChange, onSubmit, accent }: ComposerProps
         <button
           type="button"
           onClick={onSubmit}
-          disabled={disabled || !value.trim()}
+          disabled={disabled || (!value.trim() && attachments.length === 0)}
           className="inline-flex items-center justify-center w-10 h-10 rounded-xl border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           style={{
             borderColor: `${accent}66`,
@@ -606,6 +721,35 @@ function Composer({ disabled, value, onChange, onSubmit, accent }: ComposerProps
           <Send size={16} />
         </button>
       </div>
+      {attachments.length > 0 && (
+        <div className="max-w-3xl mx-auto mt-2 flex flex-wrap gap-1.5">
+          {attachments.map((p, i) => (
+            <span
+              key={`${"attachment_id" in p ? p.attachment_id : i}`}
+              className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md border border-border-subtle bg-bg-elev/70"
+            >
+              {"name" in p ? p.name : "attachment"}
+              <button
+                type="button"
+                onClick={() => onRemoveAttachment(i)}
+                className="text-muted hover:text-slate-100"
+                aria-label="Remove attachment"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsDataURL(file);
+  });
 }

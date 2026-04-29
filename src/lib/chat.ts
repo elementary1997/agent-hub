@@ -51,6 +51,47 @@ export function sendMessage(opts: {
   });
 }
 
+export interface StoredAttachment {
+  attachment_id: string;
+  kind: string;
+  name: string;
+  mime: string;
+  size_bytes: number;
+}
+
+export function storeAttachment(opts: {
+  agentId: string;
+  kind: "image" | "audio" | "pdf";
+  name: string;
+  mime: string;
+  dataUrl: string;
+}): Promise<StoredAttachment> {
+  return invoke<StoredAttachment>("chat_store_attachment", {
+    agentId: opts.agentId,
+    body: {
+      kind: opts.kind,
+      name: opts.name,
+      mime: opts.mime,
+      data_url: opts.dataUrl,
+    },
+  });
+}
+
+export interface ExportConversationResult {
+  json_path: string;
+  markdown_path: string;
+}
+
+export function exportConversation(
+  agentId: string,
+  conversationId: string,
+): Promise<ExportConversationResult> {
+  return invoke<ExportConversationResult>("chat_export_conversation", {
+    agentId,
+    id: conversationId,
+  });
+}
+
 export function onChatStream(
   cb: (e: ChatStreamEvent) => void,
 ): Promise<UnlistenFn> {

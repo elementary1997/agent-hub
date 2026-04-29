@@ -422,19 +422,15 @@ function normalizeConfigSchema(
       title: "OpenRouter API key",
       description: `sk-or-... key. Leave ${SECRET_MASK} to keep the saved key.`,
     };
-    if (properties.provider?.enum?.includes("openrouter")) {
-      properties.provider = { ...properties.provider, enum: ["openrouter"] };
-    }
+    delete properties.provider;
+    delete properties.cloudru_api_key;
+    delete properties.cloudru_key_id;
+    delete properties.cloudru_base_url;
   }
 
   if (agentId === "cloudru-agent") {
-    properties.provider = {
-      ...(properties.provider ?? {
-        type: "string",
-        description: "Upstream LLM provider",
-      }),
-      enum: ["cloudru"],
-    };
+    delete properties.provider;
+    delete properties.openrouter_api_key;
     properties.cloudru_api_key ??= {
       type: "string",
       format: "password",

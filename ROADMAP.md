@@ -57,7 +57,7 @@ Goal: a real chat with an AI agent inside the hub.
       the command palette: typing ≥ 2 characters debounces a search and
       adds matching message snippets alongside agent actions, deep-linking
       into the right conversation on Enter.
-- [ ] **v0.2.1c** Image / audio attachments where `supports_attachments`
+- [x] **v0.2.1c** Image / audio attachments where `supports_attachments`
       allows — content blob stored on disk under the app data dir,
       referenced by id from `messages.content`.
 - [x] **v0.2.1d** Reference AI agent (`examples/cloud-bridge`) —
@@ -145,13 +145,13 @@ Goal: feels modern.
 - [x] Sidebar footer renders the hotkey hint so users discover it without
       hunting through settings.
 
-### v0.4.2 — Theme switcher + custom hotkeys (next)
+### v0.4.2 — Theme switcher + custom hotkeys (shipped)
 
 - [x] Theme switcher (dark / light), persisted locally (`hub.theme`) and
       applied via `data-theme` + CSS token palette (`--bg-*`, `--border-*`,
       `--accent-*`) so the existing Tailwind utility classes reuse the same
       semantic colors in both themes.
-- [ ] User-configurable hotkey for "Show hub" + a second binding for
+- [x] User-configurable hotkey for "Show hub" + a second binding for
       "New chat with last-used AI".
 
 End state: feels fast and pretty without breaking.
@@ -192,13 +192,13 @@ End state: feels fast and pretty without breaking.
 
 Goal: shippable, signed, auto-updating.
 
-- [ ] Onboarding flow: first launch detects no agents → walks user through
+- [x] Onboarding flow: first launch detects no agents → walks user through
       installing easySTT + reference AI agent
-- [ ] Auto-update via Tauri updater
-- [ ] Tray icon with quick actions (status, new chat, quit)
-- [ ] Conversation export / backup (markdown + JSON)
-- [ ] Signed builds for Windows + Linux (.msi, .deb, .AppImage)
-- [ ] Docs site (basic)
+- [x] Auto-update via Tauri updater
+- [x] Tray icon with quick actions (status, new chat, quit)
+- [x] Conversation export / backup (markdown + JSON)
+- [x] Signed builds for Windows + Linux (.msi, .deb, .AppImage)
+- [x] Docs site (basic)
 
 End state: install, run, forget about plumbing.
 

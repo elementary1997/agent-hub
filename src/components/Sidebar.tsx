@@ -42,6 +42,8 @@ export interface SidebarProps {
   tagCounts?: Record<string, number>;
   onOpenPalette?: () => void;
   onOpenSettings?: () => void;
+  showHubHotkey?: string;
+  newChatHotkey?: string;
 }
 
 export function Sidebar({
@@ -51,6 +53,8 @@ export function Sidebar({
   tagCounts,
   onOpenPalette,
   onOpenSettings,
+  showHubHotkey,
+  newChatHotkey,
 }: SidebarProps) {
   const { t } = useI18n();
   const [tagsExpanded, setTagsExpanded] = useState(false);
@@ -168,7 +172,13 @@ export function Sidebar({
         <div className="flex items-center justify-between px-2.5 text-[11px] text-muted">
           <span>{t("sidebar.showHub")}</span>
           <kbd className="px-1.5 py-0.5 rounded border border-border-default font-mono text-[10px]">
-            Ctrl+Shift+H
+            {showHubHotkey ?? "Ctrl+Shift+H"}
+          </kbd>
+        </div>
+        <div className="flex items-center justify-between px-2.5 text-[11px] text-muted">
+          <span>{t("sidebar.newChat")}</span>
+          <kbd className="px-1.5 py-0.5 rounded border border-border-default font-mono text-[10px]">
+            {newChatHotkey ?? "Ctrl+Shift+N"}
           </kbd>
         </div>
         <button

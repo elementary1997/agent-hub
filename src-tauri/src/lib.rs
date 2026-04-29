@@ -21,10 +21,13 @@ mod supervisor;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::Emitter;
 use tauri::Manager;
+use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-use std::sync::Arc;
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
 use crate::agents::Registry;
 use crate::chatdb::ChatDb;
@@ -43,15 +46,86 @@ fn focus_main(app: &tauri::AppHandle) {
     }
 }
 
-pub fn run() {
-    let show_hub_shortcut =
-        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyH);
-    let shortcut_for_handler = show_hub_shortcut;
-    let shortcut_for_setup = show_hub_shortcut;
+#[derive(Clone)]
+struct RegisteredHotkeys {
+    show_hub: Shortcut,
+    new_chat: Shortcut,
+}
 
+impl Default for RegisteredHotkeys {
+    fn default() -> Self {
+        Self {
+            show_hub: Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyH),
+            new_chat: Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyN),
+        }
+    }
+}
+
+fn parse_shortcut(raw: &str, fallback: Shortcut) -> Shortcut {
+    Shortcut::from_str(raw).unwrap_or(fallback)
+}
+
+fn apply_hotkeys(app: &tauri::AppHandle, prefs: prefs::HotkeyPrefs) -> Result<(), String> {
+    let show = parse_shortcut(
+        &prefs.show_hub,
+        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyH),
+    );
+    let chat = parse_shortcut(
+        &prefs.new_chat,
+        Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyN),
+    );
+    if show == chat {
+        return Err("Hotkeys must be different".to_string());
+    }
+
+    app.global_shortcut().unregister_all().map_err(|e| e.to_string())?;
+    app.global_shortcut().register(show).map_err(|e| e.to_string())?;
+    app.global_shortcut().register(chat).map_err(|e| e.to_string())?;
+
+    if let Some(state) = app.try_state::<Mutex<RegisteredHotkeys>>() {
+        if let Ok(mut guard) = state.lock() {
+            *guard = RegisteredHotkeys {
+                show_hub: show,
+                new_chat: chat,
+            };
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn hotkeys_set(app: tauri::AppHandle, prefs: prefs::HotkeyPrefs) -> Result<(), String> {
+    apply_hotkeys(&app, prefs.clone())?;
+    prefs::set_hotkey_prefs(&app, &prefs)?;
+    let _ = app.emit("hotkeys-updated", &prefs);
+    Ok(())
+}
+
+#[tauri::command]
+async fn updater_check_and_install(app: tauri::AppHandle) -> Result<String, String> {
+    let pubkey = prefs::get_updater_prefs(&app).pubkey;
+    let mut builder = app.updater_builder();
+    if !pubkey.trim().is_empty() {
+        builder = builder.pubkey(pubkey.trim().to_string());
+    }
+    let updater = builder.build().map_err(|e| e.to_string())?;
+    let update = updater.check().await.map_err(|e| e.to_string())?;
+    if let Some(update) = update {
+        update
+            .download_and_install(|_, _| {}, || {})
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok("installed".to_string())
+    } else {
+        Ok("none".to_string())
+    }
+}
+
+pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -59,20 +133,28 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if shortcut == &shortcut_for_handler
-                        && event.state() == ShortcutState::Pressed
-                    {
-                        focus_main(app);
+                    if event.state() == ShortcutState::Pressed {
+                        let Some(state) = app.try_state::<Mutex<RegisteredHotkeys>>() else {
+                            return;
+                        };
+                        let Ok(guard) = state.lock() else {
+                            return;
+                        };
+                        if shortcut == &guard.show_hub {
+                            focus_main(app);
+                        } else if shortcut == &guard.new_chat {
+                            focus_main(app);
+                            let _ = app.emit("hotkey-new-chat", ());
+                        }
                     }
                 })
                 .build(),
         )
         .setup(move |app| {
-            // Best-effort: registration can fail if another app already owns
-            // the combo. We log and keep going so the rest of the hub still
-            // boots.
-            if let Err(e) = app.global_shortcut().register(shortcut_for_setup) {
-                eprintln!("[hotkey] failed to register Ctrl+Shift+H: {e}");
+            app.manage(Mutex::new(RegisteredHotkeys::default()));
+            let prefs = prefs::get_hotkey_prefs(&app.handle());
+            if let Err(e) = apply_hotkeys(&app.handle(), prefs) {
+                eprintln!("[hotkey] failed to register configured hotkeys: {e}");
             }
             let registry = Registry::new();
             app.manage(registry.clone());
@@ -98,11 +180,19 @@ pub fn run() {
 
             agents::start(app.handle().clone(), registry);
 
-            // System tray with a tiny menu — left-click brings the window
-            // back, right-click shows Show / Quit.
+            // System tray quick actions.
+            let status = MenuItem::with_id(
+                app,
+                "tray_status",
+                "Status: Agent Hub ready",
+                false,
+                None::<&str>,
+            )?;
             let show = MenuItem::with_id(app, "tray_show", "Show Agent Hub", true, None::<&str>)?;
+            let new_chat =
+                MenuItem::with_id(app, "tray_new_chat", "New chat (last AI)", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
+            let menu = Menu::with_items(app, &[&status, &show, &new_chat, &quit])?;
 
             let icon = app
                 .default_window_icon()
@@ -116,6 +206,10 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "tray_show" => focus_main(app),
+                    "tray_new_chat" => {
+                        focus_main(app);
+                        let _ = app.emit("tray-new-chat", ());
+                    }
                     "tray_quit" => app.exit(0),
                     _ => {}
                 })
@@ -150,6 +244,8 @@ pub fn run() {
             chat::chat_delete_conversation,
             chat::chat_patch_conversation,
             chat::chat_send_message,
+            chat::chat_store_attachment,
+            chat::chat_export_conversation,
             chat::chat_search,
             chat::chat_db_stats,
             supervisor::agent_start,
@@ -159,6 +255,11 @@ pub fn run() {
             supervisor::agent_uninstall_local,
             prefs::agent_get_auto_start,
             prefs::agent_set_auto_start,
+            prefs::hotkeys_get,
+            hotkeys_set,
+            prefs::updater_prefs_get,
+            prefs::updater_prefs_set,
+            updater_check_and_install,
             openrouter_agent::install_openrouter_agent,
             cloudru_agent::install_cloudru_agent,
             easystt_install::install_easystt_latest,

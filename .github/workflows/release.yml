@@ -32,13 +32,16 @@ jobs:
 
           | File | Platform |
           |------|----------|
-          | \`agent-hub_*_x64-setup.exe\` | Windows |
+          | \`agent-hub_*_x64-setup.exe\` | Windows (NSIS) |
+          | \`agent-hub_*_x64_en-US.msi\` | Windows (MSI) |
           | \`agent-hub_*_amd64.deb\` | Linux (Debian/Ubuntu) |
+          | \`agent-hub_*.AppImage\` | Linux (portable) |
 
           ## Install
 
           - **Windows:** download the \`.exe\`, run, follow prompts.
-          - **Linux:** \`sudo dpkg -i agent-hub_*_amd64.deb\` (will pull WebKit2GTK 4.1 if missing)."
+          - **Linux (.deb):** \`sudo dpkg -i agent-hub_*_amd64.deb\` (will pull WebKit2GTK 4.1 if missing).
+          - **Linux (AppImage):** \`chmod +x agent-hub_*.AppImage && ./agent-hub_*.AppImage\`."
 
           ID=$(gh release view "${{ github.ref_name }}" --json id --jq '.id')
           echo "release_id=$ID" >> $GITHUB_OUTPUT
@@ -86,9 +89,26 @@ jobs:
 
       - run: npm ci
 
+      - name: Validate updater signing secrets
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is missing."
+            exit 1
+          fi
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD}" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD is missing."
+            exit 1
+          fi
+
       - name: Build and upload to release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release_id }}

@@ -8,9 +8,11 @@
 //! is forwarded to the frontend as a `chat-stream` Tauri event so multiple
 //! conversations can be in flight without client-side bookkeeping.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
+use base64::Engine;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -66,6 +68,29 @@ pub struct SendMessageBody {
     pub model: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct StoreAttachmentBody {
+    pub kind: String,
+    pub name: String,
+    pub mime: String,
+    pub data_url: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StoredAttachment {
+    pub attachment_id: String,
+    pub kind: String,
+    pub name: String,
+    pub mime: String,
+    pub size_bytes: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportConversationResult {
+    pub json_path: String,
+    pub markdown_path: String,
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 async fn endpoint_for(registry: &Arc<Registry>, agent_id: &str) -> Result<String, String> {
@@ -105,6 +130,198 @@ async fn json_request<T: serde::de::DeserializeOwned>(
 
 fn db_of(app: &AppHandle) -> Option<Arc<ChatDb>> {
     app.try_state::<Arc<ChatDb>>().map(|s| s.inner().clone())
+}
+
+fn attachments_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("attachments");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn attachment_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+    Ok(attachments_dir(app)?.join(format!("{id}.bin")))
+}
+
+fn parse_data_url(raw: &str) -> Result<(String, Vec<u8>), String> {
+    let Some(rest) = raw.strip_prefix("data:") else {
+        return Err("invalid data URL".to_string());
+    };
+    let Some((meta, payload)) = rest.split_once(',') else {
+        return Err("invalid data URL payload".to_string());
+    };
+    let mime = meta
+        .split(';')
+        .next()
+        .filter(|m| !m.is_empty())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .map_err(|e| format!("base64 decode failed: {e}"))?;
+    Ok((mime, bytes))
+}
+
+fn materialize_attachment_parts(app: &AppHandle, content: &Value) -> Result<Value, String> {
+    let Some(parts) = content.as_array() else {
+        return Ok(content.clone());
+    };
+    let mut out = Vec::with_capacity(parts.len());
+    for p in parts {
+        let kind = p.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        let id = p.get("attachment_id").and_then(|v| v.as_str());
+        if id.is_none() || !matches!(kind, "image" | "audio" | "pdf") {
+            out.push(p.clone());
+            continue;
+        }
+        let id = id.unwrap_or_default();
+        let mime = p
+            .get("mime")
+            .and_then(|v| v.as_str())
+            .unwrap_or(match kind {
+                "image" => "image/png",
+                "audio" => "audio/mpeg",
+                "pdf" => "application/pdf",
+                _ => "application/octet-stream",
+            });
+        let path = attachment_path(app, id)?;
+        let bytes = std::fs::read(&path).map_err(|e| format!("read attachment failed: {e}"))?;
+        let data = base64::engine::general_purpose::STANDARD.encode(bytes);
+        out.push(json!({
+            "type": kind,
+            "data": format!("data:{mime};base64,{data}")
+        }));
+    }
+    Ok(Value::Array(out))
+}
+
+fn exports_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("exports");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn content_to_markdown(content: &Value) -> String {
+    if let Some(s) = content.as_str() {
+        return s.to_string();
+    }
+    if let Some(parts) = content.as_array() {
+        let mut out: Vec<String> = Vec::new();
+        for p in parts {
+            let kind = p.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+            if kind == "text" {
+                if let Some(t) = p.get("text").and_then(|v| v.as_str()) {
+                    out.push(t.to_string());
+                }
+                continue;
+            }
+            let name = p
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(kind);
+            out.push(format!("[{kind} attachment: {name}]"));
+        }
+        return out.join("\n");
+    }
+    serde_json::to_string_pretty(content).unwrap_or_else(|_| String::new())
+}
+
+fn sanitize_file_component(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+}
+
+#[tauri::command]
+pub async fn chat_store_attachment(
+    app: AppHandle,
+    _agent_id: String,
+    body: StoreAttachmentBody,
+) -> Result<StoredAttachment, String> {
+    let (mime_from_url, bytes) = parse_data_url(&body.data_url)?;
+    let mime = if body.mime.trim().is_empty() {
+        mime_from_url
+    } else {
+        body.mime.clone()
+    };
+    let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    let attachment_id = format!("att_{now}");
+    let path = attachment_path(&app, &attachment_id)?;
+    std::fs::write(&path, &bytes).map_err(|e| format!("store attachment failed: {e}"))?;
+    Ok(StoredAttachment {
+        attachment_id,
+        kind: body.kind,
+        name: body.name,
+        mime,
+        size_bytes: bytes.len(),
+    })
+}
+
+#[tauri::command]
+pub async fn chat_export_conversation(
+    app: AppHandle,
+    agent_id: String,
+    id: String,
+    registry: tauri::State<'_, Arc<Registry>>,
+) -> Result<ExportConversationResult, String> {
+    let endpoint = endpoint_for(&registry, &agent_id).await?;
+    let conv: ChatConversation = json_request(
+        &registry,
+        reqwest::Method::GET,
+        format!("{endpoint}/conversations/{id}"),
+        None,
+    )
+    .await?;
+
+    let now = chrono::Utc::now().format("%Y%m%d-%H%M%S").to_string();
+    let title = sanitize_file_component(conv.title.as_deref().unwrap_or("conversation"));
+    let stem = format!("{title}-{now}");
+    let dir = exports_dir(&app)?;
+    let json_path = dir.join(format!("{stem}.json"));
+    let md_path = dir.join(format!("{stem}.md"));
+
+    let json_bytes =
+        serde_json::to_vec_pretty(&conv).map_err(|e| format!("serialize export json failed: {e}"))?;
+    std::fs::write(&json_path, json_bytes).map_err(|e| format!("write export json failed: {e}"))?;
+
+    let mut md = String::new();
+    md.push_str(&format!("# {}\n\n", conv.title.unwrap_or_else(|| "Conversation".to_string())));
+    md.push_str(&format!("- Agent: `{}`\n", agent_id));
+    md.push_str(&format!(
+        "- Updated: `{}`\n\n",
+        conv.updated_at.unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+    ));
+    if let Some(sp) = conv.system_prompt {
+        md.push_str("## System prompt\n\n");
+        md.push_str(&sp);
+        md.push_str("\n\n");
+    }
+    md.push_str("## Messages\n\n");
+    for m in conv.messages {
+        md.push_str(&format!("### {}\n\n", m.role));
+        md.push_str(&content_to_markdown(&m.content));
+        md.push_str("\n\n");
+    }
+    std::fs::write(&md_path, md).map_err(|e| format!("write export markdown failed: {e}"))?;
+
+    Ok(ExportConversationResult {
+        json_path: json_path.display().to_string(),
+        markdown_path: md_path.display().to_string(),
+    })
 }
 
 #[tauri::command]
@@ -379,7 +596,7 @@ pub async fn chat_send_message(
     let url = format!("{endpoint}/conversations/{conversation_id}/messages");
     let payload = json!({
         "role": "user",
-        "content": body.content,
+        "content": materialize_attachment_parts(&app, &body.content)?,
         "model": body.model,
     });
 

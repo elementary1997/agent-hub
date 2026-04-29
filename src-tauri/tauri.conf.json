@@ -42,5 +42,13 @@
     "category": "Utility",
     "shortDescription": "Dashboard for personal mini-agents",
     "longDescription": "Local-first hub that aggregates and controls personal AI/utility agents over a small HTTP+WS protocol."
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY",
+      "endpoints": [
+        "https://github.com/elementary1997/agent-hub/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

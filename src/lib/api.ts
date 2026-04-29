@@ -189,3 +189,44 @@ export interface ProviderTestResult {
   models?: string[];
   error?: string;
 }
+
+export interface HotkeyPrefs {
+  show_hub: string;
+  new_chat: string;
+}
+
+export function getHotkeys(): Promise<HotkeyPrefs> {
+  return invoke<HotkeyPrefs>("hotkeys_get");
+}
+
+export function setHotkeys(prefs: HotkeyPrefs): Promise<void> {
+  return invoke<void>("hotkeys_set", { prefs });
+}
+
+export function onHotkeyNewChat(cb: () => void): Promise<UnlistenFn> {
+  return listen("hotkey-new-chat", () => cb());
+}
+
+export function onHotkeysUpdated(cb: (prefs: HotkeyPrefs) => void): Promise<UnlistenFn> {
+  return listen<HotkeyPrefs>("hotkeys-updated", (e) => cb(e.payload));
+}
+
+export function onTrayNewChat(cb: () => void): Promise<UnlistenFn> {
+  return listen("tray-new-chat", () => cb());
+}
+
+export interface UpdaterPrefs {
+  pubkey: string;
+}
+
+export function getUpdaterPrefs(): Promise<UpdaterPrefs> {
+  return invoke<UpdaterPrefs>("updater_prefs_get");
+}
+
+export function setUpdaterPrefs(prefs: UpdaterPrefs): Promise<void> {
+  return invoke<void>("updater_prefs_set", { prefs });
+}
+
+export function checkAndInstallUpdate(): Promise<"none" | "installed"> {
+  return invoke<"none" | "installed">("updater_check_and_install");
+}

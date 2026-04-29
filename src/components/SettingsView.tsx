@@ -10,14 +10,21 @@ import {
   Languages,
   Power,
   RefreshCw,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
 import { useAgentStore } from "@/store/agents";
 import {
+  checkAndInstallUpdate,
   getAutoStart,
   getChatDbStats,
+  getHotkeys,
+  getUpdaterPrefs,
   setAutoStart,
+  setHotkeys,
+  setUpdaterPrefs,
+  type HotkeyPrefs,
   type AutoStartView,
   type ChatDbStats,
 } from "@/lib/api";
@@ -41,7 +48,8 @@ const HOTKEY_ROWS: {
   whatKey: string;
   noteKey?: string;
 }[] = [
-  { combo: "Ctrl+Shift+H", whatKey: "hk.1.what", noteKey: "hk.1.note" },
+  { combo: "⌃⇧H (configurable)", whatKey: "hk.1.what", noteKey: "hk.1.note" },
+  { combo: "⌃⇧N (configurable)", whatKey: "hk.6.what", noteKey: "hk.1.note" },
   { combo: "⌘K / Ctrl+K", whatKey: "hk.2.what" },
   { combo: "↑ ↓", whatKey: "hk.3.what" },
   { combo: "Enter", whatKey: "hk.4.what" },
@@ -60,8 +68,26 @@ export function SettingsView({ onBack }: SettingsViewProps) {
   const [statsError, setStatsError] = useState<string | null>(null);
   const [autoStartRows, setAutoStartRows] = useState<AutoStartRow[]>([]);
   const [autoStartLoading, setAutoStartLoading] = useState(true);
+  const [hotkeys, setHotkeysState] = useState<HotkeyPrefs>({
+    show_hub: "Ctrl+Shift+H",
+    new_chat: "Ctrl+Shift+N",
+  });
+  const [savingHotkeys, setSavingHotkeys] = useState(false);
+  const [hotkeyMsg, setHotkeyMsg] = useState<string | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [updaterPubkey, setUpdaterPubkey] = useState("");
+  const [updaterSaving, setUpdaterSaving] = useState(false);
 
   const agents = useMemo(() => Object.values(agentsMap), [agentsMap]);
+  const updaterPubkeyError = useMemo(() => {
+    const value = updaterPubkey.trim();
+    if (!value) return null;
+    const looksLikeBase64 = /^[A-Za-z0-9+/=]+$/.test(value) && value.length >= 48;
+    const hasExpectedPrefix = value.startsWith("RWQyNTUxOT");
+    if (looksLikeBase64 && hasExpectedPrefix) return null;
+    return t("updates.pubkeyInvalid");
+  }, [updaterPubkey, t]);
 
   const refreshStats = () => {
     setStatsLoading(true);
@@ -74,6 +100,18 @@ export function SettingsView({ onBack }: SettingsViewProps) {
 
   useEffect(() => {
     refreshStats();
+  }, []);
+
+  useEffect(() => {
+    getHotkeys()
+      .then((v) => setHotkeysState(v))
+      .catch((e) => setHotkeyMsg(String(e)));
+  }, []);
+
+  useEffect(() => {
+    getUpdaterPrefs()
+      .then((v) => setUpdaterPubkey(v.pubkey ?? ""))
+      .catch((e) => setUpdateMsg(String(e)));
   }, []);
 
   useEffect(() => {
@@ -190,6 +228,50 @@ export function SettingsView({ onBack }: SettingsViewProps) {
                   ))}
                 </div>
                 <div className="mt-3 text-[11px] text-muted">{t("hotkeys.future")}</div>
+                <div className="mt-3 grid sm:grid-cols-2 gap-3">
+                  <HotkeyInput
+                    label={t("hk.1.what")}
+                    value={hotkeys.show_hub}
+                    onChange={(v) =>
+                      setHotkeysState((prev) => ({ ...prev, show_hub: v }))
+                    }
+                  />
+                  <HotkeyInput
+                    label={t("hk.6.what")}
+                    value={hotkeys.new_chat}
+                    onChange={(v) =>
+                      setHotkeysState((prev) => ({ ...prev, new_chat: v }))
+                    }
+                  />
+                </div>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    disabled={savingHotkeys}
+                    onClick={async () => {
+                      setSavingHotkeys(true);
+                      setHotkeyMsg(null);
+                      try {
+                        if (!hotkeys.show_hub.trim() || !hotkeys.new_chat.trim()) {
+                          throw new Error("Hotkeys cannot be empty.");
+                        }
+                        if (hotkeys.show_hub.trim() === hotkeys.new_chat.trim()) {
+                          throw new Error("Hotkeys must be different.");
+                        }
+                        await setHotkeys(hotkeys);
+                        setHotkeyMsg(t("hotkeys.saved"));
+                      } catch (e) {
+                        setHotkeyMsg(String(e));
+                      } finally {
+                        setSavingHotkeys(false);
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors disabled:opacity-60"
+                  >
+                    {savingHotkeys ? t("hotkeys.saving") : t("hotkeys.save")}
+                  </button>
+                </div>
+                {hotkeyMsg && <div className="text-[11px] text-muted">{hotkeyMsg}</div>}
               </Section>
 
               <Section icon={Languages} title={t("lang.section")}>
@@ -289,6 +371,70 @@ export function SettingsView({ onBack }: SettingsViewProps) {
             <Section icon={FileText} title={t("about.section")}>
               <Row label={t("about.app")} value="Agent Hub" />
               <Row label={t("about.license")} value="MIT" />
+              <label className="space-y-1.5 block pt-1">
+                <div className="text-[11px] uppercase tracking-wider text-muted">
+                  {t("updates.pubkey")}
+                </div>
+                <textarea
+                  value={updaterPubkey}
+                  onChange={(e) => setUpdaterPubkey(e.target.value)}
+                  className="w-full min-h-24 bg-bg-elev border border-border-subtle rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-border-default font-mono"
+                  placeholder="RWQyNTUxOTogLi4u"
+                />
+                <div className="text-[11px] text-muted">{t("updates.pubkeyHint")}</div>
+                {updaterPubkeyError && (
+                  <div className="text-[11px] text-red-300">{updaterPubkeyError}</div>
+                )}
+              </label>
+              <div className="pt-1">
+                <button
+                  type="button"
+                  disabled={updaterSaving || Boolean(updaterPubkeyError)}
+                  onClick={async () => {
+                    setUpdaterSaving(true);
+                    setUpdateMsg(null);
+                    try {
+                      await setUpdaterPrefs({ pubkey: updaterPubkey.trim() });
+                      setUpdateMsg(t("updates.pubkeySaved"));
+                    } catch (e) {
+                      setUpdateMsg(`${t("updates.error")}: ${String(e)}`);
+                    } finally {
+                      setUpdaterSaving(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors disabled:opacity-60"
+                >
+                  <Save size={12} />
+                  {updaterSaving ? t("updates.saving") : t("updates.save")}
+                </button>
+              </div>
+              <div className="pt-1">
+                <button
+                  type="button"
+                  disabled={updateBusy || Boolean(updaterPubkeyError)}
+                  onClick={async () => {
+                    setUpdateBusy(true);
+                    setUpdateMsg(null);
+                    try {
+                      const status = await checkAndInstallUpdate();
+                      if (status === "none") {
+                        setUpdateMsg(t("updates.none"));
+                      } else {
+                        setUpdateMsg(t("updates.ready"));
+                      }
+                    } catch (e) {
+                      setUpdateMsg(`${t("updates.error")}: ${String(e)}`);
+                    } finally {
+                      setUpdateBusy(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg border border-border-subtle hover:border-border-default text-muted hover:text-slate-200 transition-colors disabled:opacity-60"
+                >
+                  <RefreshCw size={12} className={updateBusy ? "animate-spin" : ""} />
+                  {updateBusy ? t("updates.checking") : t("updates.check")}
+                </button>
+              </div>
+              {updateMsg && <div className="text-[11px] text-muted">{updateMsg}</div>}
               <a
                 href="https://github.com/elementary1997/agent-hub"
                 target="_blank"
@@ -349,6 +495,29 @@ function Row({
         {value}
       </span>
     </div>
+  );
+}
+
+function HotkeyInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <label className="space-y-1.5">
+      <div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-bg-elev border border-border-subtle rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-border-default"
+        placeholder="Ctrl+Shift+H"
+      />
+    </label>
   );
 }
 

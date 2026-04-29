@@ -15,7 +15,15 @@ export interface ContentPartImage {
   data: string; // data: URI
 }
 
-export type ContentPart = ContentPartText | ContentPartImage;
+export interface ContentPartAttachmentRef {
+  type: "image" | "audio" | "pdf";
+  attachment_id: string;
+  name: string;
+  mime: string;
+  size_bytes: number;
+}
+
+export type ContentPart = ContentPartText | ContentPartImage | ContentPartAttachmentRef;
 
 export interface ChatMessage {
   id: string;
