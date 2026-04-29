@@ -61,6 +61,7 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
   const [actionPending, setActionPending] = useState(false);
   const [autoStart, setAutoStartState] = useState<AutoStartView | null>(null);
   const [providerModels, setProviderModels] = useState<string[]>([]);
+  const providerModelsStorageKey = `hub.providerModels.${agentId}`;
 
   const accent = agent?.manifest.accent ?? "#7c5cff";
   const isAi = agent?.manifest.kind === "ai";
@@ -103,6 +104,20 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
     void refreshConfig();
     void refreshAutoStart();
   }, [agentId, refreshLogs, refreshConfig, refreshAutoStart]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(providerModelsStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const models = parsed.filter((m): m is string => typeof m === "string" && m.trim().length > 0);
+        if (models.length > 0) setProviderModels(models);
+      }
+    } catch {
+      // Ignore malformed cache and keep default schema.
+    }
+  }, [providerModelsStorageKey]);
 
   // Live tail for log lines emitted by the supervisor.
   useEffect(() => {
@@ -343,7 +358,10 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
                     agentId={agentId}
                     endpoint={agent.manifest.endpoint}
                     config={effectiveInitialConfig}
-                    onModelsLoaded={(models) => setProviderModels(models)}
+                    onModelsLoaded={(models) => {
+                      setProviderModels(models);
+                      localStorage.setItem(providerModelsStorageKey, JSON.stringify(models));
+                    }}
                   />
                 </div>
               )}

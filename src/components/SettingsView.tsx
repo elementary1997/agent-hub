@@ -232,6 +232,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
                   <HotkeyInput
                     label={t("hk.1.what")}
                     value={hotkeys.show_hub}
+                    defaultValue="Ctrl+Shift+H"
                     onChange={(v) =>
                       setHotkeysState((prev) => ({ ...prev, show_hub: v }))
                     }
@@ -239,6 +240,7 @@ export function SettingsView({ onBack }: SettingsViewProps) {
                   <HotkeyInput
                     label={t("hk.6.what")}
                     value={hotkeys.new_chat}
+                    defaultValue="Ctrl+Shift+N"
                     onChange={(v) =>
                       setHotkeysState((prev) => ({ ...prev, new_chat: v }))
                     }
@@ -502,23 +504,91 @@ function HotkeyInput({
   label,
   value,
   onChange,
+  defaultValue,
 }: {
   label: string;
   value: string;
   onChange: (next: string) => void;
+  defaultValue: string;
 }) {
+  const { t } = useI18n();
+  const [capturing, setCapturing] = useState(false);
+
   return (
     <label className="space-y-1.5">
-      <div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
+        <button
+          type="button"
+          onClick={() => onChange(defaultValue)}
+          className="text-[10px] px-2 py-0.5 rounded border border-border-subtle text-muted hover:text-slate-200 hover:border-border-default transition-colors"
+          title={t("hotkeys.resetTo", { value: defaultValue })}
+        >
+          {t("hotkeys.reset")}
+        </button>
+      </div>
       <input
         type="text"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        readOnly
+        onFocus={() => setCapturing(true)}
+        onBlur={() => setCapturing(false)}
+        onKeyDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.key === "Backspace" || e.key === "Delete") {
+            onChange("");
+            return;
+          }
+          const combo = formatShortcutFromKeyboardEvent(e);
+          if (combo) onChange(combo);
+        }}
         className="w-full bg-bg-elev border border-border-subtle rounded-lg px-2.5 py-1.5 text-sm outline-none focus:border-border-default"
-        placeholder="Ctrl+Shift+H"
+        placeholder="Press shortcut"
       />
+      <div className="flex items-center justify-between gap-2 text-[10px] text-muted">
+        <span>
+          {capturing ? t("hotkeys.captureHintActive") : t("hotkeys.captureHintIdle")}
+        </span>
+        {capturing && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 uppercase tracking-wider">
+            {t("hotkeys.listening")}
+          </span>
+        )}
+      </div>
     </label>
   );
+}
+
+function formatShortcutFromKeyboardEvent(e: React.KeyboardEvent<HTMLInputElement>): string | null {
+  const code = e.code ?? "";
+  const key = e.key ?? "";
+  if (key === "Tab") return null;
+  const mods: string[] = [];
+  if (e.ctrlKey) mods.push("Ctrl");
+  if (e.altKey) mods.push("Alt");
+  if (e.shiftKey) mods.push("Shift");
+  if (e.metaKey) mods.push("Meta");
+
+  let main: string | null = null;
+  if (code.startsWith("Key")) {
+    main = code.slice(3).toUpperCase();
+  } else if (code.startsWith("Digit")) {
+    main = code.slice(5);
+  } else if (code.startsWith("Numpad")) {
+    main = code.slice(6);
+  } else if (code === "Space") {
+    main = "Space";
+  } else if (code === "ArrowUp" || code === "ArrowDown" || code === "ArrowLeft" || code === "ArrowRight") {
+    main = code.replace("Arrow", "Arrow");
+  } else if (key.length === 1) {
+    main = key.toUpperCase();
+  } else if (key && !["Control", "Alt", "Shift", "Meta"].includes(key)) {
+    main = key[0].toUpperCase() + key.slice(1);
+  }
+
+  if (!main) return null;
+  return [...mods, main].join("+");
 }
 
 function AutoStartRowView({

@@ -118,13 +118,13 @@ export function AgentCard({ agent, onOpenNative, onOpenSettings, onToggleRun }: 
         </div>
       )}
 
-      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+      <div className="mt-auto flex flex-nowrap items-center gap-2 pt-1">
         {canToggle && (
           <button
             type="button"
             onClick={() => onToggleRun?.(manifest.id)}
             className={cn(
-              "inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg shrink-0",
+              "inline-flex items-center justify-center gap-1.5 text-[11px] px-2 py-1.5 rounded-lg min-w-0 flex-1",
               "bg-bg-elev border border-border-subtle hover:border-border-default",
               "transition-colors",
             )}
@@ -137,7 +137,8 @@ export function AgentCard({ agent, onOpenNative, onOpenSettings, onToggleRun }: 
           type="button"
           onClick={() => onOpenSettings?.(manifest.id)}
           className={cn(
-            "inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg shrink-0",
+            "inline-flex items-center justify-center gap-1.5 text-[11px] px-2 py-1.5 rounded-lg min-w-0",
+            canToggle ? "flex-1" : "flex-[1.2]",
             "bg-bg-elev border border-border-subtle hover:border-border-default",
             "transition-colors",
           )}
@@ -149,7 +150,8 @@ export function AgentCard({ agent, onOpenNative, onOpenSettings, onToggleRun }: 
           type="button"
           onClick={() => onOpenNative?.(manifest.id)}
           className={cn(
-            "inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg",
+            "inline-flex items-center justify-center gap-1.5 text-[11px] px-2 py-1.5 rounded-lg min-w-0",
+            canToggle ? "flex-1" : "flex-[1.2]",
             "border transition-colors",
           )}
           style={{

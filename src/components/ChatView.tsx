@@ -49,6 +49,9 @@ interface ChatViewProps {
    * and whenever the value changes.
    */
   initialConversationId?: string | null;
+  initialDraft?: string | null;
+  initialDraftToken?: number | null;
+  initialAutoSubmitToken?: number | null;
 }
 
 interface StreamState {
@@ -79,6 +82,9 @@ export function ChatView({
   agentId,
   onBack,
   initialConversationId,
+  initialDraft,
+  initialDraftToken,
+  initialAutoSubmitToken,
 }: ChatViewProps) {
   const agent = useAgentStore((s) => s.agents[agentId]);
 
@@ -97,11 +103,24 @@ export function ChatView({
   const [attaching, setAttaching] = useState(false);
 
   const streamRef = useRef<StreamState | null>(null);
+  const autoSubmitTokenRef = useRef<number | null>(null);
   streamRef.current = stream;
 
   const accent = agent?.manifest.accent ?? "#7c5cff";
   const ai = agent?.manifest.ai;
-  const models = ai?.models ?? [];
+  const cachedProviderModels = useMemo(() => {
+    if (!agent) return [] as string[];
+    try {
+      const raw = localStorage.getItem(`hub.providerModels.${agent.manifest.id}`);
+      if (!raw) return [] as string[];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [] as string[];
+      return parsed.filter((m): m is string => typeof m === "string" && m.trim().length > 0);
+    } catch {
+      return [] as string[];
+    }
+  }, [agent]);
+  const models = cachedProviderModels.length > 0 ? cachedProviderModels : (ai?.models ?? []);
 
   const refreshList = useCallback(async () => {
     setConversationsLoading(true);
@@ -140,6 +159,17 @@ export function ChatView({
   }, [initialConversationId]);
 
   useEffect(() => {
+    if (!initialDraftToken || !initialDraft?.trim()) return;
+    const text = initialDraft.trim();
+    setDraft((prev) => (prev.trim().length > 0 ? `${prev}\n${text}` : text));
+  }, [initialDraft, initialDraftToken]);
+
+  useEffect(() => {
+    if (!initialAutoSubmitToken) return;
+    autoSubmitTokenRef.current = initialAutoSubmitToken;
+  }, [initialAutoSubmitToken]);
+
+  useEffect(() => {
     setActiveId(null);
     setActive(null);
     refreshList();
@@ -156,7 +186,9 @@ export function ChatView({
         if (!cancelled) {
           setActive(c);
           setSystemDraft(c.system_prompt ?? "");
-          if (!model && ai?.default_model) setModel(ai.default_model);
+          if (!model && ai?.default_model && models.includes(ai.default_model)) {
+            setModel(ai.default_model);
+          }
           if (!model && c.messages.length === 0 && models[0]) setModel(models[0]);
         }
       })
@@ -193,6 +225,14 @@ export function ChatView({
     }).then((u) => (unlisten = u));
     return () => unlisten?.();
   }, [agentId, refreshList]);
+
+  useEffect(() => {
+    if (!model) return;
+    if (models.length === 0) return;
+    if (!models.includes(model)) {
+      setModel(models[0] ?? null);
+    }
+  }, [model, models]);
 
   const handleNew = useCallback(async () => {
     try {
@@ -250,13 +290,21 @@ export function ChatView({
         conversationId: convId,
         requestId,
         content: outgoingParts,
-        model: model ?? undefined,
+        model: model && models.includes(model) ? model : undefined,
       });
     } catch (e) {
       setStream(null);
       setError(String(e));
     }
   }, [agentId, active, attachments, draft, model, stream]);
+
+  useEffect(() => {
+    if (!autoSubmitTokenRef.current) return;
+    if (!active || stream) return;
+    if (!draft.trim()) return;
+    autoSubmitTokenRef.current = null;
+    void handleSend();
+  }, [active, draft, stream, handleSend]);
   const supportsAttachments = (ai?.supports_attachments ?? []).length > 0;
 
   const handlePickAttachment = useCallback(async () => {

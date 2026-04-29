@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { AgentCard } from "@/components/AgentCard";
 import { AgentDetail } from "@/components/AgentDetail";
@@ -51,6 +51,7 @@ function sortAgents(list: Agent[]): Agent[] {
 
 export default function App() {
   const LAST_AI_KEY = "hub.lastAiAgentId";
+  const VOICE_AUTO_SEND_KEY = "hub.voice.autoSend";
   const { t } = useI18n();
   const agentsMap = useAgentStore((s) => s.agents);
   const setAll = useAgentStore((s) => s.setAll);
@@ -67,7 +68,27 @@ export default function App() {
   const [filter, setFilter] = useState<SidebarFilter>("all");
   const [chatAgent, setChatAgent] = useState<string | null>(null);
   const [chatConversation, setChatConversation] = useState<string | null>(null);
+  const [chatDraft, setChatDraft] = useState<string | null>(null);
+  const [chatDraftToken, setChatDraftToken] = useState<number | null>(null);
+  const [chatAutoSubmitToken, setChatAutoSubmitToken] = useState<number | null>(null);
   const [detailAgent, setDetailAgent] = useState<string | null>(null);
+  const [voiceTranscript, setVoiceTranscript] = useState<{
+    text: string;
+    at: number;
+  } | null>(null);
+  const [voiceAutoSend, setVoiceAutoSend] = useState<boolean>(
+    () => localStorage.getItem(VOICE_AUTO_SEND_KEY) === "1",
+  );
+  const agentsMapRef = useRef(agentsMap);
+  const voiceAutoSendRef = useRef(voiceAutoSend);
+
+  useEffect(() => {
+    agentsMapRef.current = agentsMap;
+  }, [agentsMap]);
+
+  useEffect(() => {
+    voiceAutoSendRef.current = voiceAutoSend;
+  }, [voiceAutoSend]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -99,12 +120,41 @@ export default function App() {
     localStorage.setItem("hub.theme", theme);
   }, [theme]);
 
-  const handleOpenChat = (id: string, conversationId?: string | null) => {
+  const handleOpenChat = (
+    id: string,
+    conversationId?: string | null,
+    draftText?: string | null,
+    autoSubmit?: boolean,
+  ) => {
     setDetailAgent(null);
     setSettingsOpen(false);
     setChatConversation(conversationId ?? null);
+    if (draftText && draftText.trim()) {
+      setChatDraft(draftText.trim());
+      const token = Date.now();
+      setChatDraftToken(token);
+      setChatAutoSubmitToken(autoSubmit ? token : null);
+    } else {
+      setChatDraft(null);
+      setChatDraftToken(null);
+      setChatAutoSubmitToken(null);
+    }
     setChatAgent(id);
     localStorage.setItem(LAST_AI_KEY, id);
+  };
+
+  const routeTranscriptToChat = (text: string, autoSubmit: boolean): boolean => {
+    const clean = text.trim();
+    if (!clean) return false;
+    const last = localStorage.getItem(LAST_AI_KEY);
+    const agents = agentsMapRef.current;
+    const availableAi = Object.values(agents).filter((a) => a.manifest.kind === "ai");
+    const target =
+      (last && agents[last]?.manifest.kind === "ai" ? last : null) ??
+      availableAi[0]?.manifest.id;
+    if (!target) return false;
+    handleOpenChat(target, null, clean, autoSubmit);
+    return true;
   };
   const handleOpenDetail = (id: string) => {
     setChatAgent(null);
@@ -131,7 +181,17 @@ export default function App() {
 
         unlistenUp = await onAgentUpserted((a) => upsert(a));
         unlistenRm = await onAgentRemoved((id) => remove(id));
-        unlistenEv = await onAgentEvent((e) => pushEvent(e));
+        unlistenEv = await onAgentEvent((e) => {
+          pushEvent(e);
+          const transcript = extractVoiceTranscriptText(e);
+          if (transcript) {
+            if (voiceAutoSendRef.current && routeTranscriptToChat(transcript, true)) {
+              setVoiceTranscript(null);
+            } else {
+              setVoiceTranscript({ text: transcript, at: Date.now() });
+            }
+          }
+        });
 
         const list = await listAgents();
         if (cancelled) return;
@@ -149,6 +209,10 @@ export default function App() {
       unlistenEv?.();
     };
   }, [setAll, upsert, remove, pushEvent, setManifestDir, setError, setLoaded]);
+
+  useEffect(() => {
+    localStorage.setItem(VOICE_AUTO_SEND_KEY, voiceAutoSend ? "1" : "0");
+  }, [voiceAutoSend]);
 
   useEffect(() => {
     getHotkeys().then(setHotkeys).catch(() => {});
@@ -255,6 +319,19 @@ export default function App() {
       onOpenSettings={handleOpenSettings}
     />
   );
+  const voiceBar = (
+    <VoiceTranscriptBar
+      value={voiceTranscript?.text ?? null}
+      autoSend={voiceAutoSend}
+      onToggleAutoSend={() => setVoiceAutoSend((v) => !v)}
+      onDismiss={() => setVoiceTranscript(null)}
+      onUseInChat={() => {
+        const text = voiceTranscript?.text?.trim();
+        if (!text) return;
+        if (routeTranscriptToChat(text, false)) setVoiceTranscript(null);
+      }}
+    />
+  );
 
   if (chatAgent) {
     return (
@@ -262,12 +339,19 @@ export default function App() {
         <ChatView
           agentId={chatAgent}
           initialConversationId={chatConversation}
+          initialDraft={chatDraft}
+          initialDraftToken={chatDraftToken}
+          initialAutoSubmitToken={chatAutoSubmitToken}
           onBack={() => {
             setChatAgent(null);
             setChatConversation(null);
+            setChatDraft(null);
+            setChatDraftToken(null);
+            setChatAutoSubmitToken(null);
           }}
         />
         {palette}
+        {voiceBar}
       </div>
     );
   }
@@ -281,6 +365,7 @@ export default function App() {
           onOpenChat={handleOpenChat}
         />
         {palette}
+        {voiceBar}
       </div>
     );
   }
@@ -290,6 +375,7 @@ export default function App() {
       <div className="h-screen w-screen overflow-hidden">
         <SettingsView onBack={() => setSettingsOpen(false)} />
         {palette}
+        {voiceBar}
       </div>
     );
   }
@@ -297,6 +383,7 @@ export default function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       {palette}
+      {voiceBar}
       <Sidebar
         filter={filter}
         onFilterChange={setFilter}
@@ -355,7 +442,7 @@ export default function App() {
               <EmptyState dir={manifestDir ?? null} loaded={loaded} />
             )
           ) : (
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               <AnimatePresence mode="popLayout">
                 {visible.map((agent) => (
                   <AgentCard
@@ -371,6 +458,79 @@ export default function App() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function extractVoiceTranscriptText(event: { agentId: string; type: string; data: unknown }): string | null {
+  if (event.agentId !== "easystt") return null;
+  const acceptedTypes = new Set([
+    "transcript_ready",
+    "transcript",
+    "speech_final",
+    "voice_text",
+    "text_ready",
+  ]);
+  if (!acceptedTypes.has(event.type)) return null;
+  if (typeof event.data === "string" && event.data.trim()) return event.data.trim();
+  if (!event.data || typeof event.data !== "object") return null;
+  const payload = event.data as Record<string, unknown>;
+  const textCandidate = payload.text ?? payload.transcript ?? payload.value ?? payload.message;
+  return typeof textCandidate === "string" && textCandidate.trim() ? textCandidate.trim() : null;
+}
+
+function VoiceTranscriptBar({
+  value,
+  autoSend,
+  onToggleAutoSend,
+  onUseInChat,
+  onDismiss,
+}: {
+  value: string | null;
+  autoSend: boolean;
+  onToggleAutoSend: () => void;
+  onUseInChat: () => void;
+  onDismiss: () => void;
+}) {
+  const { t } = useI18n();
+  if (!value) return null;
+  return (
+    <div className="fixed bottom-4 right-4 z-40 w-[min(560px,calc(100vw-2rem))] rounded-xl border border-border-default bg-bg-card/95 backdrop-blur p-3 shadow-card">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="text-xs uppercase tracking-wider text-muted">
+          {t("voicebar.title")} · {t("voicebar.fromEasyStt")}
+        </div>
+      </div>
+      <div className="text-sm text-slate-100 bg-bg-elev/60 rounded-lg border border-border-subtle px-2.5 py-2 mb-2 max-h-28 overflow-auto whitespace-pre-wrap break-words">
+        {value}
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={onToggleAutoSend}
+          className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
+          title={t("voicebar.autoSendHint")}
+        >
+          <span className={autoSend ? "text-emerald-300" : "text-muted"}>●</span>
+          {t("voicebar.autoSend")} {autoSend ? t("voicebar.on") : t("voicebar.off")}
+        </button>
+        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
+        >
+          {t("voicebar.dismiss")}
+        </button>
+        <button
+          type="button"
+          onClick={onUseInChat}
+          className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-border-default text-slate-100 hover:border-border-strong transition-colors"
+        >
+          {t("voicebar.useInChat")}
+        </button>
+        </div>
+      </div>
     </div>
   );
 }
