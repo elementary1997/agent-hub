@@ -18,6 +18,7 @@ import {
   Download,
   Trash2,
   User,
+  Pencil,
 } from "lucide-react";
 import {
   createConversation,
@@ -134,6 +135,8 @@ export function ChatView({
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<ContentPart[]>([]);
   const [attaching, setAttaching] = useState(false);
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
 
   const streamRef = useRef<StreamState | null>(null);
   const autoSubmitTokenRef = useRef<number | null>(null);
@@ -229,6 +232,8 @@ export function ChatView({
         if (!cancelled) {
           setActive(c);
           setSystemDraft(c.system_prompt ?? "");
+          setTitleDraft(c.title ?? "");
+          setRenamingTitle(false);
           if (!model && ai?.default_model && models.includes(ai.default_model)) {
             setModel(ai.default_model);
           }
@@ -263,7 +268,8 @@ export function ChatView({
         setStream(null);
       } else if (e.type === "error") {
         const msg = (e.data as { message?: string } | undefined)?.message ?? "stream error";
-        setStream({ ...cur, error: msg, finished: true });
+        setError(msg);
+        setStream(null);
         sendLockRef.current = false;
       } else if (e.type === "start") {
         // hub already accepts deltas without start; keep for tools / metadata
@@ -361,7 +367,12 @@ export function ChatView({
       });
     } catch (e) {
       const msg = String(e ?? "");
-      if (/read sse chunk/i.test(msg)) return;
+      if (/read sse chunk/i.test(msg)) {
+        setError("Connection interrupted while streaming. Please retry.");
+        setStream(null);
+        sendLockRef.current = false;
+        return;
+      }
       sendLockRef.current = false;
       setStream(null);
       setError(msg);
@@ -442,6 +453,26 @@ export function ChatView({
       setError(String(e));
     }
   }, [agentId, active, systemDraft]);
+
+  const handleRenameTitle = useCallback(async () => {
+    if (!active) return;
+    const nextTitle = titleDraft.trim();
+    if (!nextTitle) {
+      setRenamingTitle(false);
+      setTitleDraft(active.title ?? "");
+      return;
+    }
+    try {
+      const updated = await patchConversation(agentId, active.id, { title: nextTitle });
+      setActive(updated);
+      setConversations((prev) =>
+        prev.map((c) => (c.id === active.id ? { ...c, title: updated.title } : c)),
+      );
+      setRenamingTitle(false);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [active, agentId, titleDraft]);
 
   const messagesForDisplay = useMemo(() => {
     if (!active) return [] as ChatMessage[];
@@ -541,9 +572,43 @@ export function ChatView({
       {/* Chat panel */}
       <section className="flex-1 flex flex-col min-w-0">
         <header className="px-5 py-3 border-b border-border-subtle flex items-center gap-3 bg-bg-card/30">
-          <div className="min-w-0">
-            <div className="font-medium text-sm truncate">
-              {active?.title || (active ? "Untitled" : "Pick a conversation")}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0">
+              {active && renamingTitle ? (
+                <input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={() => void handleRenameTitle()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleRenameTitle();
+                    } else if (e.key === "Escape") {
+                      setRenamingTitle(false);
+                      setTitleDraft(active.title ?? "");
+                    }
+                  }}
+                  className="w-full max-w-md text-sm bg-bg-elev border border-border-subtle rounded-lg px-2 py-1 outline-none focus:border-border-default"
+                />
+              ) : (
+                <div className="font-medium text-sm truncate">
+                  {active?.title || (active ? "Untitled" : "Pick a conversation")}
+                </div>
+              )}
+              {active && !renamingTitle && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTitleDraft(active.title || "Untitled");
+                    setRenamingTitle(true);
+                  }}
+                  className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-md border border-border-subtle text-muted hover:text-slate-100 hover:border-border-default transition-colors"
+                  title="Rename conversation"
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
             </div>
             <div className="text-[11px] text-muted">
               {active
