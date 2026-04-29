@@ -251,6 +251,10 @@ export default function App() {
   }, [agentsMap]);
 
   const agents = useMemo(() => sortAgents(Object.values(agentsMap)), [agentsMap]);
+  const aiAgents = useMemo(
+    () => agents.filter((a) => a.manifest.kind === "ai"),
+    [agents],
+  );
 
   const counts = useMemo<Record<string, number>>(() => {
     const marketplaceIds = ["easystt", "openrouter-agent", "cloudru-agent"];
@@ -288,6 +292,17 @@ export default function App() {
     !chatAgent &&
     !detailAgent &&
     !settingsOpen;
+
+  useEffect(() => {
+    if (filter !== "ai") return;
+    if (detailAgent || settingsOpen) return;
+    const validCurrent =
+      chatAgent && agentsMap[chatAgent]?.manifest.kind === "ai" ? chatAgent : null;
+    if (validCurrent) return;
+    if (aiAgents[0]) {
+      handleOpenChat(aiAgents[0].manifest.id, null);
+    }
+  }, [filter, detailAgent, settingsOpen, chatAgent, agentsMap, aiAgents]);
 
   const handleOpenPrimary = (id: string) => {
     const agent = agentsMap[id];
@@ -341,11 +356,35 @@ export default function App() {
     />
   );
 
-  if (chatAgent) {
+  if (chatAgent || (filter === "ai" && aiAgents.length > 0)) {
+    const activeChatAgent = chatAgent && agentsMap[chatAgent]?.manifest.kind === "ai"
+      ? chatAgent
+      : aiAgents[0]?.manifest.id ?? null;
+    if (!activeChatAgent) {
+      return (
+        <div className="flex h-screen w-screen overflow-hidden">
+          {palette}
+          {voiceBar}
+          <Sidebar
+            filter={filter}
+            onFilterChange={setFilter}
+            counts={counts}
+            tagCounts={tagCounts}
+            onOpenPalette={() => setPaletteOpen(true)}
+            onOpenSettings={handleOpenSettings}
+            showHubHotkey={hotkeys.show_hub}
+            newChatHotkey={hotkeys.new_chat}
+          />
+          <main className="flex-1 grid place-items-center text-sm text-muted">
+            No AI providers available.
+          </main>
+        </div>
+      );
+    }
     return (
       <div className="h-screen w-screen overflow-hidden">
         <ChatView
-          agentId={chatAgent}
+          agentId={activeChatAgent}
           onSwitchAgent={handleSwitchChatAgent}
           onOpenProviderSettings={(id) => {
             setChatAgent(null);
@@ -360,6 +399,7 @@ export default function App() {
           initialDraftToken={chatDraftToken}
           initialAutoSubmitToken={chatAutoSubmitToken}
           onBack={() => {
+            if (filter === "ai") return;
             setChatAgent(null);
             setChatConversation(null);
             setChatDraft(null);

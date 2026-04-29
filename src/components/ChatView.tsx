@@ -91,12 +91,19 @@ export function ChatView({
   initialAutoSubmitToken,
 }: ChatViewProps) {
   const agent = useAgentStore((s) => s.agents[agentId]);
-  const aiAgents = useAgentStore((s) =>
-    Object.values(s.agents)
-      .filter((a) => a.manifest.kind === "ai")
-      .sort((a, b) =>
-        a.manifest.name.localeCompare(b.manifest.name, undefined, { sensitivity: "base" }),
-      ),
+  const agentsMap = useAgentStore((s) => s.agents);
+  const aiAgents = useMemo(
+    () =>
+      Object.values(agentsMap)
+        .filter((a) => a?.manifest?.kind === "ai")
+        .sort((a, b) =>
+          String(a.manifest.name ?? a.manifest.id).localeCompare(
+            String(b.manifest.name ?? b.manifest.id),
+            undefined,
+            { sensitivity: "base" },
+          ),
+        ),
+    [agentsMap],
   );
 
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
