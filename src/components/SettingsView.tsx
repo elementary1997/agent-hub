@@ -9,10 +9,8 @@ import {
   Hash,
   Keyboard,
   Languages,
-  Moon,
   Power,
   RefreshCw,
-  Sun,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useI18n } from "@/lib/i18n";
@@ -29,8 +27,6 @@ type SettingsTab = "general" | "system" | "about";
 
 interface SettingsViewProps {
   onBack: () => void;
-  theme: "dark" | "light";
-  onThemeChange: (next: "dark" | "light") => void;
 }
 
 interface AutoStartRow {
@@ -53,11 +49,7 @@ const HOTKEY_ROWS: {
   { combo: "Esc", whatKey: "hk.5.what" },
 ];
 
-export function SettingsView({
-  onBack,
-  theme,
-  onThemeChange,
-}: SettingsViewProps) {
+export function SettingsView({ onBack }: SettingsViewProps) {
   const { t, locale, setLocale } = useI18n();
   const agentsMap = useAgentStore((s) => s.agents);
   const manifestDir = useAgentStore((s) => s.manifestDir);
@@ -153,7 +145,7 @@ export function SettingsView({
             <div className="text-xs text-muted">{t("settings.subtitle")}</div>
           </div>
         </div>
-        <div className="max-w-3xl mx-auto px-6 flex gap-1 border-t border-border-subtle/40 overflow-x-auto">
+        <div className="max-w-3xl mx-auto px-6 flex gap-1 border-t border-border-subtle/40">
           {tabs.map((x) => (
             <button
               key={x.id}
@@ -231,37 +223,6 @@ export function SettingsView({
                 <div className="text-[11px] text-muted">{t("lang.hint")}</div>
               </Section>
 
-              <Section icon={theme === "dark" ? Moon : Sun} title={t("theme.section")}>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onThemeChange("dark")}
-                    className={cn(
-                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
-                      theme === "dark"
-                        ? "border-border-default bg-bg-elev text-slate-100"
-                        : "border-border-subtle text-muted hover:text-slate-200",
-                    )}
-                  >
-                    <Moon size={13} />
-                    {t("theme.dark")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onThemeChange("light")}
-                    className={cn(
-                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-colors",
-                      theme === "light"
-                        ? "border-border-default bg-bg-elev text-slate-100"
-                        : "border-border-subtle text-muted hover:text-slate-200",
-                    )}
-                  >
-                    <Sun size={13} />
-                    {t("theme.light")}
-                  </button>
-                </div>
-                <div className="text-[11px] text-muted">{t("theme.hint")}</div>
-              </Section>
             </>
           )}
 

@@ -26,6 +26,8 @@ import {
   stopManagedAgent,
   uninstallAgentLocal,
   type AgentConfigResponse,
+  type AgentConfigProperty,
+  type AgentConfigSchema,
   type AgentLogLine,
   type AutoStartView,
 } from "@/lib/api";
@@ -39,6 +41,7 @@ interface AgentDetailProps {
 }
 
 type Tab = "activity" | "logs" | "config";
+const SECRET_MASK = "********";
 
 const STREAM_COLOR: Record<AgentLogLine["stream"], string> = {
   stdout: "text-slate-200",
@@ -150,7 +153,13 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
     async (values: Record<string, unknown>) => {
       setSavingConfig(true);
       try {
-        const next = await putAgentConfig(agentId, values);
+        const normalizedValues =
+          agentId === "cloudru-agent"
+            ? { ...values, provider: "cloudru" }
+            : agentId === "openrouter-agent"
+              ? { ...values, provider: "openrouter" }
+              : values;
+        const next = await putAgentConfig(agentId, normalizedValues);
         setConfig(next);
         setConfigError(null);
       } catch (e) {
@@ -190,6 +199,10 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
   const initialConfig = useMemo(
     () => (config?.config as Record<string, unknown> | undefined) ?? {},
     [config],
+  );
+  const effectiveSchema = useMemo(
+    () => normalizeConfigSchema(agentId, config?.schema),
+    [agentId, config?.schema],
   );
   const configUnsupported =
     !!configError && /\b404\b|not found/i.test(configError);
@@ -343,7 +356,7 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
               ) : config ? (
                 <>
                   <SchemaForm
-                    schema={config.schema}
+                    schema={effectiveSchema}
                     initial={initialConfig}
                     onSubmit={handleSaveConfig}
                     busy={savingConfig}
@@ -377,6 +390,53 @@ export function AgentDetail({ agentId, onBack, onOpenChat }: AgentDetailProps) {
       </div>
     </div>
   );
+}
+
+function normalizeConfigSchema(
+  agentId: string,
+  schema?: AgentConfigSchema,
+): AgentConfigSchema | undefined {
+  if (!schema) return schema;
+  if (agentId !== "openrouter-agent" && agentId !== "cloudru-agent") return schema;
+
+  const properties: Record<string, AgentConfigProperty> = {
+    ...(schema.properties ?? {}),
+  };
+
+  if (agentId === "openrouter-agent") {
+    properties.openrouter_api_key ??= {
+      type: "string",
+      format: "password",
+      title: "OpenRouter API key",
+      description: `sk-or-... key. Leave ${SECRET_MASK} to keep the saved key.`,
+    };
+    if (properties.provider?.enum?.includes("openrouter")) {
+      properties.provider = { ...properties.provider, enum: ["openrouter"] };
+    }
+  }
+
+  if (agentId === "cloudru-agent") {
+    properties.provider = {
+      ...(properties.provider ?? {
+        type: "string",
+        description: "Upstream LLM provider",
+      }),
+      enum: ["cloudru"],
+    };
+    properties.cloudru_api_key ??= {
+      type: "string",
+      format: "password",
+      title: "Cloud.ru API key / bearer",
+      description: `API key or Bearer token. Leave ${SECRET_MASK} to keep the saved key.`,
+    };
+    properties.cloudru_key_id ??= {
+      type: "string",
+      title: "Cloud.ru Key ID",
+      description: "Optional: set when using key-id/key-secret flow.",
+    };
+  }
+
+  return { ...schema, properties };
 }
 
 function ActionButton({

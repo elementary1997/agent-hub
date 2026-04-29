@@ -239,11 +239,7 @@ export default function App() {
   if (settingsOpen) {
     return (
       <div className="h-screen w-screen overflow-hidden">
-        <SettingsView
-          theme={theme}
-          onThemeChange={setTheme}
-          onBack={() => setSettingsOpen(false)}
-        />
+        <SettingsView onBack={() => setSettingsOpen(false)} />
         {palette}
       </div>
     );

@@ -21,20 +21,20 @@
     color-scheme: dark;
   }
   :root[data-theme="light"] {
-    --bg-base: #dfe4ee;
+    --bg-base: #edf2fb;
     --bg-surface: #ffffff00;
-    --bg-card: #e9ecf4;
-    --bg-elev: #e2e6ef;
-    --border-subtle: #c5ccd9;
-    --border-default: #aeb8ca;
-    --border-strong: #95a0b5;
+    --bg-card: #ffffff;
+    --bg-elev: #f5f8ff;
+    --border-subtle: #cdd7ea;
+    --border-default: #adb9d3;
+    --border-strong: #8f9fc0;
     --accent: #5548e8;
     --accent-hover: #483abf;
     --accent-muted: #5548e822;
     --success: #2a8f62;
     --warn: #b97212;
     --danger: #b82d44;
-    --muted: #5a6278;
+    --muted: #4a556f;
     color-scheme: light;
   }
   html, body, #root {
@@ -112,12 +112,22 @@
 :root[data-theme="light"] .text-slate-100,
 :root[data-theme="light"] .text-slate-200,
 :root[data-theme="light"] .text-slate-300 {
-  color: #1f2a44 !important;
+  color: #202b45 !important;
 }
 :root[data-theme="light"] .hover\:text-slate-100:hover,
 :root[data-theme="light"] .hover\:text-slate-200:hover {
-  color: #111827 !important;
+  color: #0f172a !important;
 }
 :root[data-theme="light"] .bg-black\/60 {
   background-color: rgba(34, 41, 58, 0.22) !important;
+}
+:root[data-theme="light"] .text-emerald-300,
+:root[data-theme="light"] .text-emerald-400 {
+  color: #0f7a54 !important;
+}
+:root[data-theme="light"] .text-amber-400 {
+  color: #9a5b00 !important;
+}
+:root[data-theme="light"] .text-red-300 {
+  color: #a82a40 !important;
 }
