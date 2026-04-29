@@ -424,10 +424,11 @@ pub async fn chat_get_conversation(
 
     let db = db_of(&app);
     match live {
-        Ok(mut conv) => {
-            // Live succeeded — merge cached messages that the agent may have
-            // dropped. We trust the agent's content order (fresh is fresh)
-            // and only fill in what's missing by id.
+        Ok(conv) => {
+            // Live succeeded — trust agent payload as canonical.
+            // Do not merge cached messages here, because local cache ids
+            // (`local-user-*`, `local-asst-*`) differ from provider ids and
+            // create visible duplicates in UI.
             if let Some(db) = db {
                 let _ = db.upsert_conversation(
                     &agent_id,
@@ -435,24 +436,6 @@ pub async fn chat_get_conversation(
                     conv.title.as_deref(),
                     conv.system_prompt.as_deref(),
                 );
-                if let Ok(cached) = db.list_messages(&conv.id) {
-                    let mut have: std::collections::HashSet<String> =
-                        conv.messages.iter().map(|m| m.id.clone()).collect();
-                    for m in cached {
-                        if !have.contains(&m.id) {
-                            have.insert(m.id.clone());
-                            conv.messages.push(ChatMessage {
-                                id: m.id,
-                                role: m.role,
-                                content: m.content,
-                                at: Some(m.at),
-                            });
-                        }
-                    }
-                    // Stable ordering by `at` so re-merged messages slot in.
-                    conv.messages.sort_by(|a, b| a.at.cmp(&b.at));
-                    conv.message_count = Some(conv.messages.len());
-                }
             }
             Ok(conv)
         }
@@ -649,8 +632,19 @@ async fn run_stream(
     let mut stream = resp.bytes_stream();
     let mut assistant = AssistantBuf::default();
 
+    let mut saw_any_event = false;
     while let Some(chunk) = stream.next().await {
-        let bytes = chunk.context("read sse chunk")?;
+        let bytes = match chunk {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                // Some providers close SSE abruptly after final payload.
+                // If we already received any event, treat it as benign.
+                if saw_any_event {
+                    break;
+                }
+                return Err(anyhow!(err)).context("read sse chunk");
+            }
+        };
         buffer.extend_from_slice(&bytes);
 
         while let Some(pos) = find_event_boundary(&buffer) {
@@ -665,6 +659,7 @@ async fn run_stream(
                     .unwrap_or("delta")
                     .to_string();
                 let data = parsed.get("data").cloned().unwrap_or(Value::Null);
+                saw_any_event = true;
 
                 // Track assistant id and accumulate text deltas so we can
                 // persist a single assistant message at the end. The agent
@@ -702,6 +697,7 @@ async fn run_stream(
                             );
                         }
                     }
+                    return Ok(());
                 }
             }
         }

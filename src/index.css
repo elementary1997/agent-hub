@@ -21,13 +21,13 @@
     color-scheme: dark;
   }
   :root[data-theme="light"] {
-    --bg-base: #edf2fb;
+    --bg-base: #dfe7f3;
     --bg-surface: #ffffff00;
-    --bg-card: #ffffff;
-    --bg-elev: #f5f8ff;
-    --border-subtle: #cdd7ea;
-    --border-default: #adb9d3;
-    --border-strong: #8f9fc0;
+    --bg-card: #f4f7fc;
+    --bg-elev: #e8eef8;
+    --border-subtle: #b7c3d9;
+    --border-default: #98a8c5;
+    --border-strong: #7f93b8;
     --accent: #5548e8;
     --accent-hover: #483abf;
     --accent-muted: #5548e822;

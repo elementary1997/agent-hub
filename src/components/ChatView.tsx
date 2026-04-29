@@ -372,7 +372,8 @@ export function ChatView({
       if (/read sse chunk/i.test(msg)) {
         const cur = streamRef.current;
         // If we already received some tokens, treat this as a benign stream tear-down.
-        if (!cur || cur.requestId !== requestId || cur.buffer.length === 0) {
+        // Also suppress when stream already rotated/finished (race between "end" and catch).
+        if (cur && cur.requestId === requestId && cur.buffer.length === 0) {
           setError("Connection interrupted while streaming. Please retry.");
         }
         setStream(null);
